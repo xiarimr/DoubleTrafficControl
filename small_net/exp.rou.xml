@@ -1,0 +1,95 @@
+<routes>
+  <vType id="type1" length="5" accel="5" decel="10"/>
+  <flow id="i_1" departPos="random_free" from="nt1_nt2" to="nt1_np6" begin="0" end="1" departLane="0" departSpeed="0" number="4" type="type1"/>
+  <flow id="i_2" departPos="random_free" from="nt1_nt2" to="nt1_np5" begin="0" end="1" departLane="0" departSpeed="0" number="1" type="type1"/>
+  <flow id="i_3" departPos="random_free" from="nt2_nt1" to="nt1_np6" begin="0" end="1" departLane="0" departSpeed="0" number="4" type="type1"/>
+  <flow id="i_4" departPos="random_free" from="nt2_nt1" to="nt2_np4" begin="0" end="1" departLane="0" departSpeed="0" number="1" type="type1"/>
+  <flow id="i_5" departPos="random_free" from="nt1_nt2" to="nt1_np6" begin="0" end="1" departLane="1" departSpeed="0" number="4" type="type1"/>
+  <flow id="i_6" departPos="random_free" from="nt1_nt2" to="nt2_np4" begin="0" end="1" departLane="1" departSpeed="0" number="1" type="type1"/>
+  <flow id="i_7" departPos="random_free" from="nt2_nt1" to="nt1_np6" begin="0" end="1" departLane="1" departSpeed="0" number="4" type="type1"/>
+  <flow id="i_8" departPos="random_free" from="nt2_nt1" to="nt1_np5" begin="0" end="1" departLane="1" departSpeed="0" number="1" type="type1"/>
+  <flow id="f_0_0" departPos="random_free" from="np4_nt2" to="nt1_np1" begin="0" end="300" vehsPerHour="96" type="type1"/>
+  <flow id="f_0_1" departPos="random_free" from="np5_nt1" to="nt2_np2" begin="0" end="300" vehsPerHour="96" type="type1"/>
+  <flow id="f_0_2" departPos="random_free" from="np4_nt2" to="nt2_np4" begin="0" end="300" vehsPerHour="96" type="type1"/>
+  <flow id="f_0_3" departPos="random_free" from="np5_nt1" to="nt1_np5" begin="0" end="300" vehsPerHour="96" type="type1"/>
+  <flow id="f_0_4" departPos="random_free" from="np6_nt1" to="nt2_np3" begin="0" end="300" vehsPerHour="160" type="type1"/>
+  <flow id="f_0_5" departPos="random_free" from="np6_nt1" to="nt1_np6" begin="0" end="300" vehsPerHour="600" type="type1"/>
+  <flow id="f_1_0" departPos="random_free" from="np4_nt2" to="nt1_np1" begin="300" end="600" vehsPerHour="168" type="type1"/>
+  <flow id="f_1_1" departPos="random_free" from="np5_nt1" to="nt2_np2" begin="300" end="600" vehsPerHour="168" type="type1"/>
+  <flow id="f_1_2" departPos="random_free" from="np4_nt2" to="nt2_np4" begin="300" end="600" vehsPerHour="168" type="type1"/>
+  <flow id="f_1_3" departPos="random_free" from="np5_nt1" to="nt1_np5" begin="300" end="600" vehsPerHour="168" type="type1"/>
+  <flow id="f_1_4" departPos="random_free" from="np6_nt1" to="nt2_np3" begin="300" end="600" vehsPerHour="280" type="type1"/>
+  <flow id="f_1_5" departPos="random_free" from="np6_nt1" to="nt1_np6" begin="300" end="600" vehsPerHour="1050" type="type1"/>
+  <flow id="f_2_0" departPos="random_free" from="np4_nt2" to="nt1_np1" begin="600" end="900" vehsPerHour="216" type="type1"/>
+  <flow id="f_2_1" departPos="random_free" from="np5_nt1" to="nt2_np2" begin="600" end="900" vehsPerHour="216" type="type1"/>
+  <flow id="f_2_2" departPos="random_free" from="np4_nt2" to="nt2_np4" begin="600" end="900" vehsPerHour="216" type="type1"/>
+  <flow id="f_2_3" departPos="random_free" from="np5_nt1" to="nt1_np5" begin="600" end="900" vehsPerHour="216" type="type1"/>
+  <flow id="f_2_4" departPos="random_free" from="np6_nt1" to="nt2_np3" begin="600" end="900" vehsPerHour="360" type="type1"/>
+  <flow id="f_2_5" departPos="random_free" from="np6_nt1" to="nt1_np6" begin="600" end="900" vehsPerHour="1350" type="type1"/>
+  <flow id="f_3_0" departPos="random_free" from="np4_nt2" to="nt1_np1" begin="900" end="1200" vehsPerHour="240" type="type1"/>
+  <flow id="f_3_1" departPos="random_free" from="np5_nt1" to="nt2_np2" begin="900" end="1200" vehsPerHour="240" type="type1"/>
+  <flow id="f_3_2" departPos="random_free" from="np4_nt2" to="nt2_np4" begin="900" end="1200" vehsPerHour="240" type="type1"/>
+  <flow id="f_3_3" departPos="random_free" from="np5_nt1" to="nt1_np5" begin="900" end="1200" vehsPerHour="240" type="type1"/>
+  <flow id="f_3_4" departPos="random_free" from="np6_nt1" to="nt2_np3" begin="900" end="1200" vehsPerHour="400" type="type1"/>
+  <flow id="f_3_5" departPos="random_free" from="np6_nt1" to="nt1_np6" begin="900" end="1200" vehsPerHour="1500" type="type1"/>
+  <flow id="f_3_6" departPos="random_free" from="np1_nt1" to="nt1_np1" begin="900" end="1200" vehsPerHour="144" type="type1"/>
+  <flow id="f_3_7" departPos="random_free" from="np2_nt2" to="nt2_np2" begin="900" end="1200" vehsPerHour="144" type="type1"/>
+  <flow id="f_3_8" departPos="random_free" from="np1_nt1" to="nt2_np4" begin="900" end="1200" vehsPerHour="144" type="type1"/>
+  <flow id="f_3_9" departPos="random_free" from="np2_nt2" to="nt1_np5" begin="900" end="1200" vehsPerHour="144" type="type1"/>
+  <flow id="f_3_10" departPos="random_free" from="np3_nt2" to="nt2_np3" begin="900" end="1200" vehsPerHour="900" type="type1"/>
+  <flow id="f_3_11" departPos="random_free" from="np3_nt2" to="nt1_np6" begin="900" end="1200" vehsPerHour="240" type="type1"/>
+  <flow id="f_4_0" departPos="random_free" from="np4_nt2" to="nt1_np1" begin="1200" end="1500" vehsPerHour="180" type="type1"/>
+  <flow id="f_4_1" departPos="random_free" from="np5_nt1" to="nt2_np2" begin="1200" end="1500" vehsPerHour="180" type="type1"/>
+  <flow id="f_4_2" departPos="random_free" from="np4_nt2" to="nt2_np4" begin="1200" end="1500" vehsPerHour="180" type="type1"/>
+  <flow id="f_4_3" departPos="random_free" from="np5_nt1" to="nt1_np5" begin="1200" end="1500" vehsPerHour="180" type="type1"/>
+  <flow id="f_4_4" departPos="random_free" from="np6_nt1" to="nt2_np3" begin="1200" end="1500" vehsPerHour="300" type="type1"/>
+  <flow id="f_4_5" departPos="random_free" from="np6_nt1" to="nt1_np6" begin="1200" end="1500" vehsPerHour="1125" type="type1"/>
+  <flow id="f_4_6" departPos="random_free" from="np1_nt1" to="nt1_np1" begin="1200" end="1500" vehsPerHour="384" type="type1"/>
+  <flow id="f_4_7" departPos="random_free" from="np2_nt2" to="nt2_np2" begin="1200" end="1500" vehsPerHour="384" type="type1"/>
+  <flow id="f_4_8" departPos="random_free" from="np1_nt1" to="nt2_np4" begin="1200" end="1500" vehsPerHour="384" type="type1"/>
+  <flow id="f_4_9" departPos="random_free" from="np2_nt2" to="nt1_np5" begin="1200" end="1500" vehsPerHour="384" type="type1"/>
+  <flow id="f_4_10" departPos="random_free" from="np3_nt2" to="nt2_np3" begin="1200" end="1500" vehsPerHour="2400" type="type1"/>
+  <flow id="f_4_11" departPos="random_free" from="np3_nt2" to="nt1_np6" begin="1200" end="1500" vehsPerHour="640" type="type1"/>
+  <flow id="f_5_0" departPos="random_free" from="np4_nt2" to="nt1_np1" begin="1500" end="1800" vehsPerHour="120" type="type1"/>
+  <flow id="f_5_1" departPos="random_free" from="np5_nt1" to="nt2_np2" begin="1500" end="1800" vehsPerHour="120" type="type1"/>
+  <flow id="f_5_2" departPos="random_free" from="np4_nt2" to="nt2_np4" begin="1500" end="1800" vehsPerHour="120" type="type1"/>
+  <flow id="f_5_3" departPos="random_free" from="np5_nt1" to="nt1_np5" begin="1500" end="1800" vehsPerHour="120" type="type1"/>
+  <flow id="f_5_4" departPos="random_free" from="np6_nt1" to="nt2_np3" begin="1500" end="1800" vehsPerHour="200" type="type1"/>
+  <flow id="f_5_5" departPos="random_free" from="np6_nt1" to="nt1_np6" begin="1500" end="1800" vehsPerHour="750" type="type1"/>
+  <flow id="f_5_6" departPos="random_free" from="np1_nt1" to="nt1_np1" begin="1500" end="1800" vehsPerHour="432" type="type1"/>
+  <flow id="f_5_7" departPos="random_free" from="np2_nt2" to="nt2_np2" begin="1500" end="1800" vehsPerHour="432" type="type1"/>
+  <flow id="f_5_8" departPos="random_free" from="np1_nt1" to="nt2_np4" begin="1500" end="1800" vehsPerHour="432" type="type1"/>
+  <flow id="f_5_9" departPos="random_free" from="np2_nt2" to="nt1_np5" begin="1500" end="1800" vehsPerHour="432" type="type1"/>
+  <flow id="f_5_10" departPos="random_free" from="np3_nt2" to="nt2_np3" begin="1500" end="1800" vehsPerHour="2700" type="type1"/>
+  <flow id="f_5_11" departPos="random_free" from="np3_nt2" to="nt1_np6" begin="1500" end="1800" vehsPerHour="720" type="type1"/>
+  <flow id="f_6_0" departPos="random_free" from="np4_nt2" to="nt1_np1" begin="1800" end="2100" vehsPerHour="60" type="type1"/>
+  <flow id="f_6_1" departPos="random_free" from="np5_nt1" to="nt2_np2" begin="1800" end="2100" vehsPerHour="60" type="type1"/>
+  <flow id="f_6_2" departPos="random_free" from="np4_nt2" to="nt2_np4" begin="1800" end="2100" vehsPerHour="60" type="type1"/>
+  <flow id="f_6_3" departPos="random_free" from="np5_nt1" to="nt1_np5" begin="1800" end="2100" vehsPerHour="60" type="type1"/>
+  <flow id="f_6_4" departPos="random_free" from="np6_nt1" to="nt2_np3" begin="1800" end="2100" vehsPerHour="100" type="type1"/>
+  <flow id="f_6_5" departPos="random_free" from="np6_nt1" to="nt1_np6" begin="1800" end="2100" vehsPerHour="375" type="type1"/>
+  <flow id="f_6_6" departPos="random_free" from="np1_nt1" to="nt1_np1" begin="1800" end="2100" vehsPerHour="480" type="type1"/>
+  <flow id="f_6_7" departPos="random_free" from="np2_nt2" to="nt2_np2" begin="1800" end="2100" vehsPerHour="480" type="type1"/>
+  <flow id="f_6_8" departPos="random_free" from="np1_nt1" to="nt2_np4" begin="1800" end="2100" vehsPerHour="480" type="type1"/>
+  <flow id="f_6_9" departPos="random_free" from="np2_nt2" to="nt1_np5" begin="1800" end="2100" vehsPerHour="480" type="type1"/>
+  <flow id="f_6_10" departPos="random_free" from="np3_nt2" to="nt2_np3" begin="1800" end="2100" vehsPerHour="3000" type="type1"/>
+  <flow id="f_6_11" departPos="random_free" from="np3_nt2" to="nt1_np6" begin="1800" end="2100" vehsPerHour="800" type="type1"/>
+  <flow id="f_7_0" departPos="random_free" from="np1_nt1" to="nt1_np1" begin="2100" end="2400" vehsPerHour="384" type="type1"/>
+  <flow id="f_7_1" departPos="random_free" from="np2_nt2" to="nt2_np2" begin="2100" end="2400" vehsPerHour="384" type="type1"/>
+  <flow id="f_7_2" departPos="random_free" from="np1_nt1" to="nt2_np4" begin="2100" end="2400" vehsPerHour="384" type="type1"/>
+  <flow id="f_7_3" departPos="random_free" from="np2_nt2" to="nt1_np5" begin="2100" end="2400" vehsPerHour="384" type="type1"/>
+  <flow id="f_7_4" departPos="random_free" from="np3_nt2" to="nt2_np3" begin="2100" end="2400" vehsPerHour="2400" type="type1"/>
+  <flow id="f_7_5" departPos="random_free" from="np3_nt2" to="nt1_np6" begin="2100" end="2400" vehsPerHour="640" type="type1"/>
+  <flow id="f_8_0" departPos="random_free" from="np1_nt1" to="nt1_np1" begin="2400" end="2700" vehsPerHour="288" type="type1"/>
+  <flow id="f_8_1" departPos="random_free" from="np2_nt2" to="nt2_np2" begin="2400" end="2700" vehsPerHour="288" type="type1"/>
+  <flow id="f_8_2" departPos="random_free" from="np1_nt1" to="nt2_np4" begin="2400" end="2700" vehsPerHour="288" type="type1"/>
+  <flow id="f_8_3" departPos="random_free" from="np2_nt2" to="nt1_np5" begin="2400" end="2700" vehsPerHour="288" type="type1"/>
+  <flow id="f_8_4" departPos="random_free" from="np3_nt2" to="nt2_np3" begin="2400" end="2700" vehsPerHour="1800" type="type1"/>
+  <flow id="f_8_5" departPos="random_free" from="np3_nt2" to="nt1_np6" begin="2400" end="2700" vehsPerHour="480" type="type1"/>
+  <flow id="f_9_0" departPos="random_free" from="np1_nt1" to="nt1_np1" begin="2700" end="3000" vehsPerHour="96" type="type1"/>
+  <flow id="f_9_1" departPos="random_free" from="np2_nt2" to="nt2_np2" begin="2700" end="3000" vehsPerHour="96" type="type1"/>
+  <flow id="f_9_2" departPos="random_free" from="np1_nt1" to="nt2_np4" begin="2700" end="3000" vehsPerHour="96" type="type1"/>
+  <flow id="f_9_3" departPos="random_free" from="np2_nt2" to="nt1_np5" begin="2700" end="3000" vehsPerHour="96" type="type1"/>
+  <flow id="f_9_4" departPos="random_free" from="np3_nt2" to="nt2_np3" begin="2700" end="3000" vehsPerHour="600" type="type1"/>
+  <flow id="f_9_5" departPos="random_free" from="np3_nt2" to="nt1_np6" begin="2700" end="3000" vehsPerHour="160" type="type1"/>
+</routes>
