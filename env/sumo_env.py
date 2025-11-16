@@ -80,15 +80,27 @@ class SumoEnvTwoAgents:
         if full_restart or not hasattr(self, 'wave_scale'):
             # Full restart: close connection and restart SUMO process
             try:
-                if self.traci:
+                if self.traci is not None:
                     self.traci.close()
             except:
                 pass
             
+            # Kill old SUMO process to prevent resource leaks
+            try:
+                if hasattr(self, 'sumo_proc') and self.sumo_proc is not None:
+                    self.sumo_proc.terminate()
+                    self.sumo_proc.wait(timeout=3.0)
+            except:
+                try:
+                    if hasattr(self, 'sumo_proc') and self.sumo_proc is not None:
+                        self.sumo_proc.kill()
+                except:
+                    pass
+            
             # Start new SUMO session
             cmd = [self.sumo_bin, "-c", self.sumocfg, "--start", "--step-length", str(self.sim_step_length), "--remote-port", str(self.port)]
             self.sumo_proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            time.sleep(3.0)
+            time.sleep(2.0)
             traci.init(self.port)
             self.traci = traci
             
@@ -143,8 +155,9 @@ class SumoEnvTwoAgents:
             # Fast reset: just reload the simulation without restarting process
             try:
                 self.traci.load(['-c', self.sumocfg, '--start', '--step-length', str(self.sim_step_length)])
-            except:
-                # If load fails, continue from current state (non-critical)
+            except Exception as e:
+                # If load fails, log and continue from current state
+                print(f"Warning: traci.load() failed: {e}. Continuing with current simulation state.")
                 pass
         
         # Reset step counter and phase tracking
@@ -154,14 +167,26 @@ class SumoEnvTwoAgents:
         return self._get_all_obs()
 
     def close(self):
+        """Close SUMO connection and terminate process properly."""
+        # Close traci connection first
         try:
-            self.traci.close()
+            if self.traci is not None:
+                self.traci.close()
         except:
             pass
+        
+        # Terminate SUMO process gracefully
         try:
-            self.sumo_proc.kill()
+            if hasattr(self, 'sumo_proc') and self.sumo_proc is not None:
+                self.sumo_proc.terminate()
+                self.sumo_proc.wait(timeout=3.0)
         except:
-            pass
+            # Force kill if terminate doesn't work
+            try:
+                if hasattr(self, 'sumo_proc') and self.sumo_proc is not None:
+                    self.sumo_proc.kill()
+            except:
+                pass
 
     # ---------- helpers ----------
     def _safe_get_phase(self, tls):
