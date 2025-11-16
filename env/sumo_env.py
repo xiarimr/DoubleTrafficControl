@@ -80,11 +80,24 @@ class SumoEnvTwoAgents:
         if full_restart or not hasattr(self, 'wave_scale'):
             # Full restart: close connection and restart SUMO process
             try:
-                if self.traci:
+                if self.traci is not None:
                     self.traci.close()
             except:
                 pass
             
+            # Kill old SUMO process to prevent resource leaks
+            try:
+                if hasattr(self, 'sumo_proc') and self.sumo_proc is not None:
+                    self.sumo_proc.terminate()
+                    self.sumo_proc.wait(timeout=3.0)
+            except:
+                try:
+                    if hasattr(self, 'sumo_proc') and self.sumo_proc is not None:
+                        self.sumo_proc.kill()
+                except:
+                    pass
+
+
             # Start new SUMO session
             cmd = [self.sumo_bin, "-c", self.sumocfg, "--start", "--step-length", str(self.sim_step_length), "--remote-port", str(self.port)]
             self.sumo_proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -155,13 +168,20 @@ class SumoEnvTwoAgents:
 
     def close(self):
         try:
-            self.traci.close()
+            if self.traci is not None:
+                self.traci.close()
         except:
             pass
         try:
-            self.sumo_proc.kill()
+            if hasattr(self, 'sumo_proc') and self.sumo_proc is not None:
+                self.sumo_proc.terminate()
+                self.sumo_proc.wait(timeout=3.0)
         except:
-            pass
+            try:
+                if hasattr(self, 'sumo_proc') and self.sumo_proc is not None:
+                    self.sumo_proc.kill()
+            except:
+                pass
 
     # ---------- helpers ----------
     def _safe_get_phase(self, tls):

@@ -58,7 +58,7 @@ def train(
 
     # Create env
     env = SumoEnvTwoAgents(sumocfg_path=SUMO_CFG, sumo_bin=SUMO_BIN,
-                           delta_time=4.0, switch_penalty=1.0)
+                           delta_time=4.0, switch_penalty=1.0, use_gui=False)
     AGENTS = ["A", "B"]
     obs_dim = 5
     act_dim = 6
@@ -84,15 +84,6 @@ def train(
     agent_A.v_optimizer = central_agent.v_optimizer
     agent_B.v_optimizer = central_agent.v_optimizer
 
-    # Checkpointing
-    ckpt = tf.train.Checkpoint(agentA_actor=agent_A.actor,
-                               agentB_actor=agent_B.actor,
-                               critic=shared_critic,
-                               pi_opt_A=agent_A.pi_optimizer,
-                               pi_opt_B=agent_B.pi_optimizer,
-                               v_opt=central_agent.v_optimizer)  # optional
-    manager = tf.train.CheckpointManager(ckpt, directory=model_dir, max_to_keep=5)
-
     # training loop
     for ep in range(total_epochs):
         # buffers: per-agent
@@ -109,7 +100,7 @@ def train(
             "B": (tf.zeros((1, lstm_size)), tf.zeros((1, lstm_size)))
         }
 
-        o = env.reset()
+        o = env.reset(full_restart=(ep == 0))
         steps = 0
         while steps < batch_steps:
             # choose actions
@@ -202,6 +193,7 @@ def train(
     agent_B.actor.save_weights(os.path.join(model_dir, "actorB_final.ckpt"))
     shared_critic.save_weights(os.path.join(model_dir, "critic_final.ckpt"))
     print("Training finished, models saved.")
+    env.close()
 
 
 if __name__ == "__main__":
