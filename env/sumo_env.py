@@ -43,14 +43,20 @@ class SumoEnvTwoAgents:
         self.prev_phase = { "nt1": None, "nt2": None }  # for switch detection
         self.detectors = []
 
-        # start sumo
-        self._start_sumo()
-        # warmup & initialize detectors etc.
         self.reset()
 
     def _start_sumo(self):
         max_retries = 5
         for attempt in range(max_retries):
+            # Clean up previous attempt's process if it exists
+            if hasattr(self, 'sumo_proc') and self.sumo_proc:
+                try:
+                    self.sumo_proc.kill()
+                    self.sumo_proc.wait(timeout=2.0)
+                except:
+                    pass
+                self.sumo_proc = None
+
             try:
                 port = self.port + attempt
                 cmd = [self.sumo_bin, "-c", self.sumocfg, "--start", 
@@ -58,15 +64,19 @@ class SumoEnvTwoAgents:
                     "--remote-port", str(port)]
                 self.sumo_proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, 
                                                 stderr=subprocess.PIPE)
-                time.sleep(1.0)
+                
+                time.sleep(2.0)
                 traci.init(port)
                 self.traci = traci
                 self.port = port
+                print(f"SUMO started and connected on port {port}.")
                 return
             except Exception as e:
+                print(f"Attempt {attempt+1}/{max_retries} failed to start SUMO on port {self.port + attempt}: {e}")
                 if attempt == max_retries - 1:
+                    print("All attempts to start SUMO failed.")
                     raise
-                time.sleep(1.0)
+
 
     def reset(self, full_restart=False):
         """
@@ -82,6 +92,7 @@ class SumoEnvTwoAgents:
             try:
                 if self.traci is not None:
                     self.traci.close()
+                    time.sleep(0.5)  # Wait for connection to fully close
             except:
                 pass
             
@@ -97,13 +108,10 @@ class SumoEnvTwoAgents:
                 except:
                     pass
 
+            self.sumo_proc = None
 
             # Start new SUMO session
-            cmd = [self.sumo_bin, "-c", self.sumocfg, "--start", "--step-length", str(self.sim_step_length), "--remote-port", str(self.port)]
-            self.sumo_proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            time.sleep(3.0)
-            traci.init(self.port)
-            self.traci = traci
+            self._start_sumo()
             
             # Initialize warmup data lists
             self.warm_wave_list = []
@@ -117,7 +125,8 @@ class SumoEnvTwoAgents:
             vals = []  # collect flows every warmup step
 
             # Warmup phase
-            for _ in range(self.warmup_steps):
+            for i in range(self.warmup_steps):
+                print("warmup step:", i+1, "/", self.warmup_steps)
                 self.traci.simulationStep()
 
                 wave_tmp = 0

@@ -143,9 +143,9 @@ def train(
         # Critic value estimates v_t for t=0..T-1
         vals = shared_critic(gobs).numpy()  # shape (T,)
         # bootstrap last value (for last state after last step)
-        last_gobs = gobs[-1:]
-        last_val = shared_critic(last_gobs).numpy()[0]
-        vals_full = np.append(vals, last_val)  # shape (T+1,)
+        last_gobs_next = np.concatenate([o["A"], o["B"]], axis=0).astype(np.float32)
+        last_val = shared_critic(last_gobs_next.reshape(1, -1)).numpy()[0]
+        vals_full = np.append(vals, last_val)
 
         # use summed rewards as global reward (MAPPO common choice)
         rewards_sum = rew_buf["A"] + rew_buf["B"]  # shape (T,)
