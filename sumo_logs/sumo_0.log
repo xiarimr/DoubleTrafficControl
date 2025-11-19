@@ -1,0 +1,88 @@
+Loading net-file from 'small_net/exp.net.xml' ... done (6ms).
+Loading additional-files from 'small_net/exp.add.xml' ... done (1ms).
+Warning: Missing yellow phase in tlLogic 'nt1', program '0' for tl-index 16 when switching to phase 1.
+Warning: Missing yellow phase in tlLogic 'nt1', program '0' for tl-index 16 when switching to phase 3.
+Warning: Missing yellow phase in tlLogic 'nt1', program '0' for tl-index 16 when switching to phase 5.
+Warning: Missing yellow phase in tlLogic 'nt1', program '0' for tl-index 20 when switching to phase 7.
+Warning: Missing yellow phase in tlLogic 'nt2', program '0' for tl-index 16 when switching to phase 1.
+Warning: Missing yellow phase in tlLogic 'nt2', program '0' for tl-index 16 when switching to phase 3.
+Warning: Missing yellow phase in tlLogic 'nt2', program '0' for tl-index 16 when switching to phase 5.
+Warning: Missing yellow phase in tlLogic 'nt2', program '0' for tl-index 20 when switching to phase 7.
+Loading route-files incrementally from 'small_net/exp.rou.xml'
+Loading done.
+Simulation version 1.24.0 started with time: 0.00.
+Warning: Vehicle 'f_1_5.30' performs emergency stop at the end of lane 'np1_nt1_1' because of a red traffic light (decel=-14.47, offset=2.95), time=872.00.
+Warning: Teleporting vehicle 'f_2_1.21'; waited too long (wrong lane), lane='np1_nt1_1', time=1257.00.
+Warning: Teleporting vehicle 'f_3_8.5'; waited too long (wrong lane), lane='np1_nt1_0', time=1257.00.
+Warning: Vehicle 'f_2_1.21' ends teleporting on edge 'nt1_np5', time=1257.00.
+Warning: Vehicle 'f_3_8.5' ends teleporting on edge 'nt1_np6', time=1257.00.
+Warning: Teleporting vehicle 'f_3_9.20'; waited too long (wrong lane), lane='np4_nt2_1', time=1587.00.
+Warning: Vehicle 'f_3_9.20' ends teleporting on edge 'nt2_np2', time=1587.00.
+Warning: Teleporting vehicle 'f_3_3.0'; waited too long (yield), lane='np4_nt2_1', time=1588.00.
+Warning: Vehicle 'f_3_3.0' ends teleporting on edge 'nt2_np3', time=1588.00.
+Warning: Teleporting vehicle 'f_1_5.51'; waited too long (wrong lane), lane='np6_nt1_0', time=1614.00.
+Warning: Vehicle 'f_1_5.51' ends teleporting on edge 'nt1_np5', time=1614.00.
+Warning: Teleporting vehicle 'f_2_0.43'; waited too long (yield), lane='np6_nt1_0', time=1615.00.
+Warning: Vehicle 'f_2_0.43' ends teleporting on edge 'nt1_nt2', time=1615.00.
+Warning: Teleporting vehicle 'f_3_7.5'; waited too long (wrong lane), lane='np1_nt1_0', time=1641.00.
+Warning: Vehicle 'f_3_7.5' ends teleporting on edge 'nt1_np6', time=1641.00.
+Warning: Teleporting vehicle 'f_2_1.22'; waited too long (yield), lane='np1_nt1_0', time=1643.00.
+Warning: Vehicle 'f_2_1.22' ends teleporting on edge 'nt1_np5', time=1643.00.
+Warning: Teleporting vehicle 'f_2_1.40'; waited too long (yield), lane='np5_nt1_0', time=1737.00.
+Warning: Vehicle 'f_2_1.40' ends teleporting on edge 'nt1_np1', time=1737.00.
+Warning: Teleporting vehicle 'f_3_8.5'; waited too long (wrong lane), lane='np6_nt1_1', time=2004.00.
+Warning: Vehicle 'f_3_8.5' ends teleporting on edge 'nt1_np1', time=2004.00.
+Warning: Teleporting vehicle 'f_1_5.53'; waited too long (wrong lane), lane='np6_nt1_0', time=2006.00.
+Warning: Vehicle 'f_1_5.53' ends teleporting on edge 'nt1_np5', time=2006.00.
+Warning: Teleporting vehicle 'f_2_1.29'; waited too long (wrong lane), lane='np1_nt1_1', time=2030.00.
+Warning: Teleporting vehicle 'f_3_10.6'; waited too long (jam), lane='np1_nt1_0', time=2030.00.
+Warning: Vehicle 'f_2_1.29' ends teleporting on edge 'nt1_np5', time=2030.00.
+Warning: Vehicle 'f_3_10.6' ends teleporting on edge 'nt1_nt2', time=2118.00.
+Warning: Teleporting vehicle 'f_3_7.7'; waited too long (wrong lane), lane='np1_nt1_0', time=2415.00.
+Warning: Vehicle 'f_3_7.7' ends teleporting on edge 'nt1_np6', time=2415.00.
+Warning: Teleporting vehicle 'f_3_3.8'; waited too long (wrong lane), lane='np4_nt2_0', time=2430.00.
+Warning: Vehicle 'f_3_3.8' ends teleporting on edge 'nt2_np3', time=2430.00.
+Warning: Teleporting vehicle 'f_4_1.5'; waited too long (yield), lane='np4_nt2_0', time=2432.00.
+Warning: Vehicle 'f_4_1.5' ends teleporting on edge 'nt2_nt1', time=2432.00.
+Warning: Teleporting vehicle 'f_4_1.19'; waited too long (wrong lane), lane='np4_nt2_1', time=2433.00.
+Warning: Vehicle 'f_4_1.19' ends teleporting on edge 'nt2_nt1', time=2433.00.
+Warning: Teleporting vehicle 'f_3_0.17'; waited too long (wrong lane), lane='np2_nt2_1', time=2643.00.
+Warning: Vehicle 'f_3_0.17' ends teleporting on edge 'nt2_np4', time=2643.00.
+Warning: Teleporting vehicle 'f_4_9.1'; waited too long (jam), lane='np2_nt2_0', time=2646.00.
+Warning: Vehicle 'f_4_9.1' ends teleporting on edge 'np3_nt2', time=2702.00.
+Warning: Teleporting vehicle 'f_3_8.18'; waited too long (wrong lane), lane='np1_nt1_0', time=2722.00.
+Warning: Vehicle 'f_3_8.18' ends teleporting on edge 'nt1_np6', time=2722.00.
+Warning: Teleporting vehicle 'f_3_8.15'; waited too long (wrong lane), lane='np5_nt1_1', time=2814.00.
+Warning: Vehicle 'f_3_8.15' ends teleporting on edge 'nt1_np1', time=2814.00.
+Warning: Teleporting vehicle 'f_5_1.7'; waited too long (yield), lane='np5_nt1_0', time=2815.00.
+Warning: Teleporting vehicle 'f_2_5.4'; waited too long (yield), lane='np6_nt1_1', time=2858.00.
+Warning: Vehicle 'f_5_1.7' ends teleporting on edge 'nt1_np5', time=2929.00.
+Warning: Vehicle 'f_2_5.4' ends teleporting on edge 'nt1_np6', time=2938.00.
+Warning: Teleporting vehicle 'f_3_7.8'; waited too long (wrong lane), lane='np1_nt1_0', time=3028.00.
+Warning: Vehicle 'f_3_7.8' ends teleporting on edge 'nt1_np6', time=3028.00.
+Warning: Teleporting vehicle 'f_4_9.27'; waited too long (jam), lane='np2_nt2_0', time=3033.00.
+Warning: Vehicle 'f_4_9.27' ends teleporting on edge 'np3_nt2', time=3088.00.
+Warning: Teleporting vehicle 'f_2_1.36'; waited too long (wrong lane), lane='np1_nt1_1', time=3337.00.
+Warning: Teleporting vehicle 'f_3_8.21'; waited too long (wrong lane), lane='np1_nt1_0', time=3337.00.
+Warning: Vehicle 'f_2_1.36' ends teleporting on edge 'nt1_np5', time=3337.00.
+Warning: Vehicle 'f_3_8.21' ends teleporting on edge 'nt1_np6', time=3337.00.
+Warning: Teleporting vehicle 'f_2_1.39'; waited too long (wrong lane), lane='np1_nt1_1', time=3338.00.
+Warning: Vehicle 'f_2_1.39' ends teleporting on edge 'nt1_np5', time=3338.00.
+Warning: Teleporting vehicle 'f_1_5.54'; waited too long (wrong lane), lane='np5_nt1_1', time=3356.00.
+Warning: Vehicle 'f_1_5.54' ends teleporting on edge 'nt1_np6', time=3356.00.
+Warning: Teleporting vehicle 'f_5_1.8'; waited too long (jam), lane='np5_nt1_0', time=3357.00.
+Warning: Vehicle 'f_5_1.8' ends teleporting on edge 'nt1_np5', time=3458.00.
+Simulation ended at time: 3600.00.
+Reason: The final simulation step has been reached.
+Performance:
+ Duration: 3.19s
+ Real time factor: 1130.3
+ UPS: 156214.756672
+Vehicles:
+ Inserted: 954 (Loaded: 4009)
+ Running: 212
+ Waiting: 3055
+ Teleports: 30 (Jam: 4, Yield: 7, Wrong Lane: 19)
+ Emergency Stops: 1
+DijkstraRouter answered 4651 queries and explored 10.17 edges on average.
+DijkstraRouter spent 0.00s answering queries (0.00ms on average).
