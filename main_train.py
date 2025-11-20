@@ -1,6 +1,8 @@
 import os
 import numpy as np
 import tensorflow as tf
+import socket
+from contextlib import closing
 
 from agents.mappo_agent import MAPPOAgent
 from env.sumo_env import BatchSumoEnvManager
@@ -61,7 +63,21 @@ def compute_gae(rewards, values, gamma=0.99, lam=0.95, num_envs=4):
     
     return advs, returns
 
+def find_free_port(base_port=8813, num_ports=4):
+    free_ports = []
+    current_port = base_port
 
+    while len(free_ports) < num_ports:
+        try:
+            with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as sock:
+                sock.bind(('127.0.0.1', current_port))
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                free_ports.append(current_port)
+        except OSError:
+            pass
+        current_port += 1
+    return free_ports
+    
 def train(
     SUMO_CFG="small_net/exp.sumocfg",
     SUMO_BIN="sumo",
@@ -80,7 +96,7 @@ def train(
     clip_ratio=0.2,
     time_series_len=16,  # LSTM time-series length
     model_dir="./models_tf2",
-    save_every=20
+    save_every=20,
 ):
     # GPU configuration
     gpus = tf.config.list_physical_devices('GPU')
@@ -96,13 +112,15 @@ def train(
 
     os.makedirs(model_dir, exist_ok=True)
 
+    ports = find_free_port(base_port=base_port, num_ports=num_envs)
+
     # Create batch environment manager
     env_manager = BatchSumoEnvManager(
         num_envs=num_envs,
         sumocfg_path=SUMO_CFG,
         sumo_bin=SUMO_BIN,
-        base_port=base_port,
-        time_series_len=time_series_len
+        time_series_len=time_series_len,
+        ports=ports
     )
 
     AGENTS = ["A", "B"]

@@ -11,7 +11,7 @@ class Actor(tf.keras.Model):
         
         if use_time_series:
             # Time-series LSTM branch
-            self.ts_lstm = tf.keras.layers.LSTM(lstm_size, return_sequences=False, return_state=True, mask_zero=True)
+            self.ts_lstm = tf.keras.layers.LSTM(lstm_size, return_sequences=False, return_state=True)
             # Flatten current obs and combine with LSTM output
             self.fc_combine = tf.keras.layers.Dense(128, activation="relu")
             # Policy head

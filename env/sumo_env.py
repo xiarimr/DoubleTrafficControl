@@ -1,6 +1,5 @@
 
 import numpy as np
-import subprocess
 import time
 import traci
 from collections import deque
@@ -11,6 +10,8 @@ class SumoEnvTwoAgents:
     def __init__(self,
                 sumocfg_path="small_net/exp.sumocfg",
                 sumo_bin="sumo",
+                port = None,
+                label = None,
                 delta_time=3.0,
                 sim_step_length=1.0,
                 warmup_steps=120,
@@ -22,6 +23,8 @@ class SumoEnvTwoAgents:
                 max_steps=10000):
         self.sumocfg = sumocfg_path
         self.sumo_bin = "sumo-gui" if use_gui else sumo_bin
+        self.port = port
+        self.label = label
         self.delta_time = delta_time
         self.sim_step_length = sim_step_length
         self.warmup_steps = warmup_steps
@@ -41,27 +44,16 @@ class SumoEnvTwoAgents:
         self.prev_phase = {"nt1": None, "nt2": None}
         self.detectors = []
 
-        self.reset()
-
     def _start_sumo(self):
         max_retries = 5
         for attempt in range(max_retries):
-            if hasattr(self, 'sumo_proc') and self.sumo_proc:
-                try:
-                    self.sumo_proc.kill()
-                    self.sumo_proc.wait(timeout=2.0)
-                except:
-                    pass
-                self.sumo_proc = None
-
             try:
                 cmd = [self.sumo_bin, "-c", self.sumocfg, "--start",
                     "--step-length", str(self.sim_step_length)]
-                self.sumo_proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
-                                                stderr=subprocess.PIPE)
-                traci.start(cmd)
-                self.traci = traci
-                print("SUMO started and connected (auto port).")
+                traci.start(cmd, port=self.port, label=self.label)
+                self.traci = traci.getConnection(self.label)
+                time.sleep(1)
+                print(f"SUMO started and connected {self.label}.")
                 return
             except Exception as e:
                 print(f"Attempt {attempt+1}/{max_retries} failed: {e}")
@@ -77,18 +69,7 @@ class SumoEnvTwoAgents:
             except:
                 pass
 
-            try:
-                if hasattr(self, 'sumo_proc') and self.sumo_proc is not None:
-                    self.sumo_proc.terminate()
-                    self.sumo_proc.wait(timeout=3.0)
-            except:
-                try:
-                    if hasattr(self, 'sumo_proc') and self.sumo_proc is not None:
-                        self.sumo_proc.kill()
-                except:
-                    pass
 
-            self.sumo_proc = None
             self._start_sumo()
 
             self.warm_wave_list = []
@@ -149,18 +130,7 @@ class SumoEnvTwoAgents:
                 self.traci = None
         except Exception as e:
             print(f"Error closing traci: {e}")
-        try:
-            if hasattr(self, 'sumo_proc') and self.sumo_proc is not None:
-                self.sumo_proc.terminate()
-                self.sumo_proc.wait(timeout=3.0)
-        except:
-            try:
-                if hasattr(self, 'sumo_proc') and self.sumo_proc is not None:
-                    self.sumo_proc.kill()
-            except:
-                pass
-        finally:
-            self.sumo_proc = None
+
 
     def _safe_get_phase(self, tls):
         try:
@@ -305,7 +275,7 @@ class BatchSumoEnvManager:
     """
 
     def __init__(self, num_envs=4, sumocfg_path="small_net/exp.sumocfg", 
-                 sumo_bin="sumo", time_series_len=16):
+                 sumo_bin="sumo", time_series_len=16, ports=None):
         """
         Args:
             num_envs: Number of parallel SUMO instances
@@ -318,8 +288,12 @@ class BatchSumoEnvManager:
         self.time_series_len = time_series_len
         self.envs = []
         self.time_series_buffers = {}  # Per-env time-series buffers
-        
+        self.ports = ports
+    
+        self.labels = [f"sumo_{i}" for i in range(num_envs)]
+
         for i in range(num_envs):
+            label = self.labels[i]
             env = SumoEnvTwoAgents(
                 sumocfg_path=sumocfg_path,
                 sumo_bin=sumo_bin,
@@ -327,7 +301,9 @@ class BatchSumoEnvManager:
                 sim_step_length=1.0,
                 warmup_steps=120,
                 switch_penalty=1.0,
-                use_gui=False
+                use_gui=False,
+                port=self.ports[i] if self.ports else None,
+                label=label
             )
             self.envs.append(env)
             # Initialize time-series buffer for each agent in each env
