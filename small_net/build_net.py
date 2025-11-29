@@ -348,7 +348,7 @@ def output_tls(tls, phase):
     # 四相位配置 (G:高路权绿灯, g:低路权绿灯, y:黄灯, r:红灯)
     # 东西向优先
     # 修正后的四相位配置
-    four_phases_corrected = [
+    four_phases = [
         # 相位1: 东西直行 (G) + 所有右转 (g)
         "rrrr" + "GGGG" + "rrrrrrrr" + "gggggggg",
         "rrrr" + "yyyy" + "rrrrrrrr" + "rrrrrrrr",
@@ -372,7 +372,7 @@ def output_tls(tls, phase):
     for i in range(1, 3):
         node = 'nt' + str(i)
         str_adds += tls % node
-        for k, p in enumerate(four_phases_corrected):
+        for k, p in enumerate(four_phases):
             str_adds += phase % (phase_duration[k], p)
         str_adds += '  </tlLogic>\n'
     

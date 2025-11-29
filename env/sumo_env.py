@@ -34,7 +34,6 @@ class SumoEnvTwoAgents:
         self.max_steps = max_steps
 
         # agent <-> tls mapping
-        self.agent_names = ["A", "B"]
         self.agent_tls = {"A": "nt1", "B": "nt2"}
         self.n_actions = 8
 
@@ -118,7 +117,7 @@ class SumoEnvTwoAgents:
                 self.traci.load(['-c', self.sumocfg, '--start', '--step-length', str(self.sim_step_length)])
             except:
                 pass
-
+    
         self.step_count = 0
         self.prev_phase = {"nt1": self._safe_get_phase("nt1"), "nt2": self._safe_get_phase("nt2")}
         return self._get_all_obs()
@@ -266,7 +265,134 @@ class SumoEnvTwoAgents:
         done = self.step_count * self.sim_step_length >= self.max_steps
 
         return obs, rewards, done, info
-
+    
+    # def get_phase_info(self, tls_id):
+    #     """
+    #     获取指定交通灯的当前相位信息
+        
+    #     Args:
+    #         tls_id: 交通灯ID，例如 "nt1" 或 "nt2"
+            
+    #     Returns:
+    #         dict: 包含相位详细信息的字典
+    #     """
+    #     try:
+    #         current_phase_index = self.traci.trafficlight.getPhase(tls_id)
+    #         phase_duration = self.traci.trafficlight.getPhaseDuration(tls_id)
+    #         phase_state = self.traci.trafficlight.getRedYellowGreenState(tls_id)
+    #         program = self.traci.trafficlight.getAllProgramLogics(tls_id)
+            
+    #         # 获取完整的相位定义
+    #         if program:
+    #             logic = program[0]  # 通常使用第一个程序
+    #             phases = logic.phases
+                
+    #             phase_info = {
+    #                 "tls_id": tls_id,
+    #                 "current_phase_index": current_phase_index,
+    #                 "current_phase_duration": phase_duration,
+    #                 "current_state": phase_state,
+    #                 "total_phases": len(phases),
+    #                 "all_phases": []
+    #             }
+                
+    #             for idx, phase in enumerate(phases):
+    #                 phase_detail = {
+    #                     "index": idx,
+    #                     "duration": phase.duration,
+    #                     "state": phase.state,
+    #                     "description": self._describe_phase(phase.state),
+    #                     "is_current": (idx == current_phase_index)
+    #                 }
+    #                 phase_info["all_phases"].append(phase_detail)
+                
+    #             return phase_info
+    #         else:
+    #             return {
+    #                 "tls_id": tls_id,
+    #                 "current_phase_index": current_phase_index,
+    #                 "current_state": phase_state,
+    #                 "error": "No program logic found"
+    #             }
+                
+    #     except Exception as e:
+    #         return {"error": str(e)}
+    
+    # def _describe_phase(self, state):
+    #     """
+    #     将相位状态字符串转换为人类可读的描述
+        
+    #     Args:
+    #         state: 相位状态字符串，例如 "rrrrGGGGrrrrrrrrgggggggg"
+    #     """
+    #     # 24个连接的索引含义
+    #     # 0-3: 南北直行, 4-7: 东西直行
+    #     # 8-11: 南北左转, 12-15: 东西左转
+    #     # 16-19: 南北右转, 20-23: 东西右转
+        
+    #     descriptions = []
+        
+    #     # 检查东西直行 (索引 4-7)
+    #     ew_straight = state[4:8]
+    #     if 'G' in ew_straight:
+    #         descriptions.append("东西直行(绿灯)")
+    #     elif 'y' in ew_straight or 'Y' in ew_straight:
+    #         descriptions.append("东西直行(黄灯)")
+        
+    #     # 检查南北直行 (索引 0-3)
+    #     ns_straight = state[0:4]
+    #     if 'G' in ns_straight:
+    #         descriptions.append("南北直行(绿灯)")
+    #     elif 'y' in ns_straight or 'Y' in ns_straight:
+    #         descriptions.append("南北直行(黄灯)")
+        
+    #     # 检查东西左转 (索引 12-15)
+    #     ew_left = state[12:16]
+    #     if 'G' in ew_left:
+    #         descriptions.append("东西左转(绿灯)")
+    #     elif 'y' in ew_left or 'Y' in ew_left:
+    #         descriptions.append("东西左转(黄灯)")
+        
+    #     # 检查南北左转 (索引 8-11)
+    #     ns_left = state[8:12]
+    #     if 'G' in ns_left:
+    #         descriptions.append("南北左转(绿灯)")
+    #     elif 'y' in ns_left or 'Y' in ns_left:
+    #         descriptions.append("南北左转(黄灯)")
+        
+    #     # 检查右转 (索引 16-23)
+    #     right_turn = state[16:24]
+    #     if 'g' in right_turn:
+    #         descriptions.append("右转(低优先级绿灯)")
+        
+    #     return " + ".join(descriptions) if descriptions else "全红"
+    
+    # def print_all_phases(self, tls_id="nt1"):
+    #     """
+    #     打印指定交通灯的所有相位信息
+        
+    #     Args:
+    #         tls_id: 交通灯ID，默认为 "nt1"
+    #     """
+    #     info = self.get_phase_info(tls_id)
+        
+    #     if "error" in info:
+    #         print(f"错误: {info['error']}")
+    #         return
+        
+    #     print(f"\n{'='*80}")
+    #     print(f"交通灯: {info['tls_id']}")
+    #     print(f"当前相位索引: {info['current_phase_index']}")
+    #     print(f"当前相位状态: {info['current_state']}")
+    #     print(f"总相位数: {info['total_phases']}")
+    #     print(f"{'='*80}\n")
+        
+    #     for phase in info["all_phases"]:
+    #         marker = ">>> " if phase["is_current"] else "    "
+    #         print(f"{marker}相位 {phase['index']}: (持续 {phase['duration']}秒)")
+    #         print(f"    状态字符串: {phase['state']}")
+    #         print(f"    描述: {phase['description']}")
+    #         print()
 
 class BatchSumoEnvManager:
     """

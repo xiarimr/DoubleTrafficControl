@@ -3,6 +3,8 @@ import numpy as np
 import tensorflow as tf
 import socket
 from contextlib import closing
+from matplotlib import pyplot as plt
+import json
 
 from agents.mappo_agent import MAPPOAgent
 from env.sumo_env import BatchSumoEnvManager
@@ -111,6 +113,8 @@ def train(
         print("No GPU found, using CPU.")
 
     os.makedirs(model_dir, exist_ok=True)
+
+    total_rewards_list = []
 
     ports = find_free_port(base_port=base_port, num_ports=num_envs)
 
@@ -294,6 +298,7 @@ def train(
         # Logging
         avg_rew = {aid: float(np.mean(rew_buf[aid])) for aid in AGENTS}
         print(f"[EP {ep}] avg_rewards: {avg_rew}")
+        total_rewards_list.append(np.mean(list(avg_rew.values())))
 
         # Save checkpoints
         if ep % save_every == 0:
@@ -309,14 +314,35 @@ def train(
     print("Training finished, models saved.")
     
     env_manager.close_all()
+    return total_rewards_list
+
+def reward_plot(total_rewards_list, save_path="training_rewards.png"):
+    plt.figure(figsize=(10, 6))
+    plt.plot(total_rewards_list)
+    plt.xlabel("Episode")
+    plt.ylabel("Average Reward")
+    plt.title("Training Rewards Over Episodes")
+    plt.grid()
+    plt.savefig(save_path)
+    plt.close()
+    print(f"Reward plot saved to {save_path}")
 
 
 if __name__ == "__main__":
-    train(
+    total_rewards_list = train(
         SUMO_CFG="small_net/exp.sumocfg",
         SUMO_BIN="sumo",
-        total_epochs=2000,
+        total_epochs=200,
         env_steps=1024,
         num_envs=4,  # Run 4 SUMO instances in parallel
         time_series_len=16  # LSTM processes 16 time-steps
+    )
+    # 保存为 JSON 文件
+    with open("training_rewards.json", "w") as f:
+        json.dump(total_rewards_list, f, indent=2)
+    print("Rewards saved to training_rewards.json")
+
+    reward_plot(
+        total_rewards_list,
+        save_path="training_rewards.png"
     )
