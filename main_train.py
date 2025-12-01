@@ -1,3 +1,8 @@
+# TODO
+# 增加对是否采用协同控制的学习
+# 通过计算两种情况下的奖励差异，来衡量协同控制的效果
+
+
 import os
 import numpy as np
 import tensorflow as tf
@@ -115,6 +120,9 @@ def train(
     os.makedirs(model_dir, exist_ok=True)
 
     total_rewards_list = []
+    corwork_list = []
+    ew_flow_list = []
+    ns_flow_list = []
 
     ports = find_free_port(base_port=base_port, num_ports=num_envs)
 
@@ -314,7 +322,7 @@ def train(
     print("Training finished, models saved.")
     
     env_manager.close_all()
-    return total_rewards_list
+    return total_rewards_list, corwork_list, ew_flow_list, ns_flow_list
 
 def reward_plot(total_rewards_list, save_path="training_rewards.png"):
     plt.figure(figsize=(10, 6))
@@ -329,18 +337,29 @@ def reward_plot(total_rewards_list, save_path="training_rewards.png"):
 
 
 if __name__ == "__main__":
-    total_rewards_list = train(
+    total_rewards_list, corwork_list, ew_flow_list, ns_flow_list = train(
         SUMO_CFG="small_net/exp.sumocfg",
         SUMO_BIN="sumo",
-        total_epochs=200,
+        total_epochs=2000,
         env_steps=1024,
-        num_envs=4,  # Run 4 SUMO instances in parallel
+        num_envs=1,  # Run 1 SUMO instance in parallel
         time_series_len=16  # LSTM processes 16 time-steps
     )
+    
     # 保存为 JSON 文件
-    with open("training_rewards.json", "w") as f:
+    os.makedirs("results_json", exist_ok=True)
+    with open("results_json/training_rewards.json", "w") as f:
         json.dump(total_rewards_list, f, indent=2)
     print("Rewards saved to training_rewards.json")
+    with open("results_json/corwork_list.json", "w") as f:
+        json.dump(corwork_list, f, indent=2)
+    print("Corwork list saved to corwork_list.json")
+    with open("results_json/ew_flow_list.json", "w") as f:
+        json.dump(ew_flow_list, f, indent=2)
+    print("EW flow list saved to ew_flow_list.json")
+    with open("results_json/ns_flow_list.json", "w") as f:
+        json.dump(ns_flow_list, f, indent=2)
+    print("NS flow list saved to ns_flow_list.json")
 
     reward_plot(
         total_rewards_list,

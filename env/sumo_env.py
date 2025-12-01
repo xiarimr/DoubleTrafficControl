@@ -1,7 +1,10 @@
+# TODO
+# 东西南北的流量
 
 import numpy as np
 import time
-import traci
+# import traci
+import libsumo as traci
 from collections import deque
 
 class SumoEnvTwoAgents:
@@ -15,7 +18,7 @@ class SumoEnvTwoAgents:
                 delta_time=3.0,
                 sim_step_length=1.0,
                 warmup_steps=120,
-                peak_threshold=None,
+                # peak_threshold=None,
                 alpha_low=0.0,
                 alpha_high=0.85,
                 switch_penalty=1.0,
@@ -24,11 +27,11 @@ class SumoEnvTwoAgents:
         self.sumocfg = sumocfg_path
         self.sumo_bin = "sumo-gui" if use_gui else sumo_bin
         self.port = port
-        self.label = label
+        self.label = label  # libsumo 不支持多实例的 label
         self.delta_time = delta_time
         self.sim_step_length = sim_step_length
         self.warmup_steps = warmup_steps
-        self.peak_threshold = peak_threshold
+        # self.peak_threshold = peak_threshold
         self.alpha = [alpha_low, alpha_high]
         self.switch_penalty = switch_penalty
         self.max_steps = max_steps
@@ -41,23 +44,53 @@ class SumoEnvTwoAgents:
         self.traci = None
         self.step_count = 0
         self.prev_phase = {"nt1": None, "nt2": None}
-        self.detectors = []
+        # self.detectors = []
+        
+        # 缓存车道信息
+        self._lane_cache = {}
+
+        # 东南西北的车流量
+        self.ns_flow = []
+        self.ew_flow = []
 
     def _start_sumo(self):
         max_retries = 5
         for attempt in range(max_retries):
             try:
-                cmd = [self.sumo_bin, "-c", self.sumocfg, "--start",
-                    "--step-length", str(self.sim_step_length)]
-                traci.start(cmd, port=self.port, label=self.label)
-                self.traci = traci.getConnection(self.label)
-                time.sleep(1)
-                print(f"SUMO started and connected {self.label}.")
+                # libsumo 使用不同的启动方式
+                cmd = [
+                    "sumo",
+                    "-c", self.sumocfg,
+                    "--step-length", str(self.sim_step_length),
+                    "--no-step-log", "true",
+                    "--no-warnings", "true",
+                    "--duration-log.disable", "true",
+                    "--time-to-teleport", "-1",
+                    "--start"
+                ]
+                
+                traci.start(cmd)
+                self.traci = traci
+                
+                # print(f"SUMO started with libsumo (faster!)")
+                
+                # 预缓存车道信息
+                self._cache_lane_info()
                 return
+                
             except Exception as e:
                 print(f"Attempt {attempt+1}/{max_retries} failed: {e}")
                 if attempt == max_retries - 1:
                     raise
+                time.sleep(0.5)
+
+    def _cache_lane_info(self):
+        """预缓存所有交通灯的车道信息"""
+        try:
+            for tls in self.agent_tls.values():
+                self._lane_cache[tls] = list(self.traci.trafficlight.getControlledLanes(tls))
+        except Exception as e:
+            print(f"Warning: Failed to cache lane info: {e}")
 
     def reset(self, full_restart=False):
         if full_restart or not hasattr(self, 'wave_scale'):
@@ -74,26 +107,28 @@ class SumoEnvTwoAgents:
             self.warm_wave_list = []
             self.warm_wait_list = []
 
-            try:
-                self.detectors = list(self.traci.inductionloop.getIDList())
-            except:
-                self.detectors = []
+            # try:
+            #     self.detectors = list(self.traci.lanearea.getIDList())
+            # except:
+            #     self.detectors = []
             
-            vals = []
+            # vals = []
+            print(f"Warming up {self.warmup_steps} steps...")
+            
             for i in range(self.warmup_steps):
                 # print("warmup step:", i+1, "/", self.warmup_steps)
                 self.traci.simulationStep()
 
                 wave_tmp = 0
                 wait_tmp = 0
-                step_flow = 0
+                # step_flow = 0
 
-                for det in self.detectors:
-                    try:
-                        step_flow += self.traci.inductionloop.getLastStepVehicleNumber(det)
-                    except:
-                        pass
-                vals.append(step_flow)
+                # for det in self.detectors:
+                #     try:
+                #         step_flow += self.traci.inductionloop.getLastStepVehicleNumber(det)
+                #     except:
+                #         pass
+                # vals.append(step_flow)
 
                 for tls in self.agent_tls.values():
                     lanes = self._get_controlled_lanes(tls)
@@ -107,20 +142,33 @@ class SumoEnvTwoAgents:
                 self.warm_wave_list.append(wave_tmp)
                 self.warm_wait_list.append(wait_tmp)
 
-            if self.peak_threshold is None:
-                self.peak_threshold = max(1.0, float(np.percentile(vals, 60)) * 1.5)
+            # if self.peak_threshold is None:
+            #     self.peak_threshold = max(1.0, float(np.percentile(vals, 60)) * 1.5)
 
             self.wave_scale = max(1.0, np.percentile(self.warm_wave_list, 95))
             self.wait_scale = max(1.0, np.percentile(self.warm_wait_list, 95))
         else:
             try:
-                self.traci.load(['-c', self.sumocfg, '--start', '--step-length', str(self.sim_step_length)])
-            except:
-                pass
+                self.traci.load([
+                    '-c', self.sumocfg,
+                    '--start',
+                    '--step-length', str(self.sim_step_length)
+                ])
+            except Exception as e:
+                print(f"Warning: load failed: {e}")
     
         self.step_count = 0
         self.prev_phase = {"nt1": self._safe_get_phase("nt1"), "nt2": self._safe_get_phase("nt2")}
         return self._get_all_obs()
+
+    def _get_controlled_lanes(self, tls):
+        """从缓存获取车道"""
+        if tls not in self._lane_cache:
+            try:
+                self._lane_cache[tls] = list(self.traci.trafficlight.getControlledLanes(tls))
+            except:
+                self._lane_cache[tls] = []
+        return self._lane_cache[tls]
 
     def close(self):
         try:
@@ -128,20 +176,13 @@ class SumoEnvTwoAgents:
                 self.traci.close()
                 self.traci = None
         except Exception as e:
-            print(f"Error closing traci: {e}")
-
+            print(f"Error closing libsumo: {e}")
 
     def _safe_get_phase(self, tls):
         try:
             return int(self.traci.trafficlight.getPhase(tls))
         except:
             return 0
-
-    def _get_controlled_lanes(self, tls):
-        try:
-            return list(self.traci.trafficlight.getControlledLanes(tls))
-        except:
-            return []
 
     def _compute_wave(self, tls):
         lanes = self._get_controlled_lanes(tls)
@@ -182,14 +223,20 @@ class SumoEnvTwoAgents:
             return 0.0
         return float(np.mean(occs))
 
-    def _compute_total_detector_flow(self):
-        s = 0
-        for det in self.detectors:
-            try:
-                s += self.traci.inductionloop.getLastStepVehicleNumber(det)
-            except:
-                pass
-        return float(s)
+    # def _compute_total_detector_flow(self):
+    #     s = 0
+    #     for det in self.detectors:
+    #         try:
+    #             s += self.traci.lanearea.getLastStepVehicleNumber(det)
+    #         except:
+    #             pass
+    #     return float(s)
+    
+    def _get_flow(self):
+        lanes = self.traci.lane.getIDList()
+        print(lanes)
+        
+
 
     def _get_all_obs(self, neighbor_entropy=None):
         if neighbor_entropy is None:
@@ -203,7 +250,8 @@ class SumoEnvTwoAgents:
         wave = self._compute_wave(tls)
         wait = self._compute_wait(tls)
         occ = self._compute_downstream_occ(tls)
-        peak_flag = 1.0 if self._compute_total_detector_flow() >= self.peak_threshold else 0.0
+        # peak_flag = 1.0 if self._compute_total_detector_flow() >= self.peak_threshold else 0.0
+        peak_flag = 0.0
         return np.array([wave/self.wave_scale, wait/self.wait_scale, occ, peak_flag, neighbor_entropy], dtype=np.float32)
 
     def _local_reward(self, aid):
@@ -238,8 +286,9 @@ class SumoEnvTwoAgents:
             if prev_phases.get(tls, None) is not None and cur_phase != prev_phases[tls]:
                 local[aid] -= self.switch_penalty
 
-        total_flow = self._compute_total_detector_flow()
-        peak_flag = 1.0 if total_flow >= self.peak_threshold else 0.0
+        # total_flow = self._compute_total_detector_flow()
+        # peak_flag = 1.0 if total_flow >= self.peak_threshold else 0.0
+        peak_flag = 0.0
         alpha = self.alpha[1] if peak_flag >= 1.0 else self.alpha[0]
 
         rewards = {}
@@ -431,6 +480,8 @@ class BatchSumoEnvManager:
                 port=self.ports[i] if self.ports else None,
                 label=label
             )
+            env._start_sumo()
+            print(env._lane_cache)
             self.envs.append(env)
             # Initialize time-series buffer for each agent in each env
             self.time_series_buffers[i] = {
