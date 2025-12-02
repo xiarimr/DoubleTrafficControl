@@ -369,13 +369,15 @@ if __name__ == "__main__":
     total_rewards_list, last_epoch_alpha, total_flows = train(
         SUMO_CFG="small_net/exp.sumocfg",
         SUMO_BIN="sumo",
-        total_epochs=200,
+        total_epochs=2000,
         env_steps=1024,
-        num_envs=4,  # Run 4 SUMO instances in parallel
+        num_envs=1,  # Run 1 SUMO instance in parallel
         time_series_len=16  # LSTM processes 16 time-steps
     )
+    
     # 保存为 JSON 文件
-    with open("training_rewards.json", "w") as f:
+    os.makedirs("results_json", exist_ok=True)
+    with open("results_json/training_rewards.json", "w") as f:
         json.dump(total_rewards_list, f, indent=2)
     print("Rewards saved to training_rewards.json")
 
