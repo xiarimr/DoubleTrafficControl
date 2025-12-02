@@ -18,7 +18,7 @@ class SumoEnvTwoAgents:
                 delta_time=3.0,
                 sim_step_length=1.0,
                 warmup_steps=120,
-                # peak_threshold=None,
+                peak_threshold=None,
                 alpha_low=0.0,
                 alpha_high=0.85,
                 switch_penalty=1.0,
@@ -31,7 +31,7 @@ class SumoEnvTwoAgents:
         self.delta_time = delta_time
         self.sim_step_length = sim_step_length
         self.warmup_steps = warmup_steps
-        # self.peak_threshold = peak_threshold
+        self.peak_threshold = peak_threshold
         self.alpha = [alpha_low, alpha_high]
         self.switch_penalty = switch_penalty
         self.max_steps = max_steps
@@ -44,14 +44,11 @@ class SumoEnvTwoAgents:
         self.traci = None
         self.step_count = 0
         self.prev_phase = {"nt1": None, "nt2": None}
-        # self.detectors = []
+        self.detectors = []
         
         # 缓存车道信息
         self._lane_cache = {}
 
-        # 东南西北的车流量
-        self.ns_flow = []
-        self.ew_flow = []
 
     def _start_sumo(self):
         max_retries = 5
@@ -107,12 +104,12 @@ class SumoEnvTwoAgents:
             self.warm_wave_list = []
             self.warm_wait_list = []
 
-            # try:
-            #     self.detectors = list(self.traci.lanearea.getIDList())
-            # except:
-            #     self.detectors = []
+            try:
+                self.detectors = list(self.traci.lanearea.getIDList())
+            except:
+                self.detectors = []
             
-            # vals = []
+            vals = []
             print(f"Warming up {self.warmup_steps} steps...")
             
             for i in range(self.warmup_steps):
@@ -121,14 +118,14 @@ class SumoEnvTwoAgents:
 
                 wave_tmp = 0
                 wait_tmp = 0
-                # step_flow = 0
+                step_flow = 0
 
-                # for det in self.detectors:
-                #     try:
-                #         step_flow += self.traci.inductionloop.getLastStepVehicleNumber(det)
-                #     except:
-                #         pass
-                # vals.append(step_flow)
+                for det in self.detectors:
+                    try:
+                        step_flow += self.traci.lanearea.getLastStepVehicleNumber(det)
+                    except:
+                        pass
+                vals.append(step_flow)
 
                 for tls in self.agent_tls.values():
                     lanes = self._get_controlled_lanes(tls)
@@ -142,8 +139,8 @@ class SumoEnvTwoAgents:
                 self.warm_wave_list.append(wave_tmp)
                 self.warm_wait_list.append(wait_tmp)
 
-            # if self.peak_threshold is None:
-            #     self.peak_threshold = max(1.0, float(np.percentile(vals, 60)) * 1.5)
+            if self.peak_threshold is None:
+                self.peak_threshold = max(1.0, float(np.percentile(vals, 60)) * 1.5)
 
             self.wave_scale = max(1.0, np.percentile(self.warm_wave_list, 95))
             self.wait_scale = max(1.0, np.percentile(self.warm_wait_list, 95))
@@ -223,20 +220,22 @@ class SumoEnvTwoAgents:
             return 0.0
         return float(np.mean(occs))
 
-    # def _compute_total_detector_flow(self):
-    #     s = 0
-    #     for det in self.detectors:
-    #         try:
-    #             s += self.traci.lanearea.getLastStepVehicleNumber(det)
-    #         except:
-    #             pass
-    #     return float(s)
+    def _compute_total_detector_flow(self):
+        s = 0
+        for det in self.detectors:
+            try:
+                s += self.traci.lanearea.getLastStepVehicleNumber(det)
+            except:
+                pass
+        return float(s)
     
-    def _get_flow(self):
+    def _compute_total_flow(self):
         lanes = self.traci.lane.getIDList()
-        print(lanes)
-        
-
+        s = 0
+        for l in lanes:
+            if ":" not in l:
+                s += self.traci.lane.getLastStepVehicleNumber(l)
+        return float(s)
 
     def _get_all_obs(self, neighbor_entropy=None):
         if neighbor_entropy is None:
@@ -250,8 +249,7 @@ class SumoEnvTwoAgents:
         wave = self._compute_wave(tls)
         wait = self._compute_wait(tls)
         occ = self._compute_downstream_occ(tls)
-        # peak_flag = 1.0 if self._compute_total_detector_flow() >= self.peak_threshold else 0.0
-        peak_flag = 0.0
+        peak_flag = 1.0 if self._compute_total_detector_flow() >= self.peak_threshold else 0.0
         return np.array([wave/self.wave_scale, wait/self.wait_scale, occ, peak_flag, neighbor_entropy], dtype=np.float32)
 
     def _local_reward(self, aid):
@@ -262,8 +260,9 @@ class SumoEnvTwoAgents:
         spill_pen = 10.0 if occ > 0.85 else 0.0
         return -(q + 0.2*w + spill_pen)
 
-    def step(self, action_dict, neighbor_policy_probs=None):
+    def step(self, action_dict, neighbor_policy_probs=None, learned_alphas=None):
         prev_phases = {tls: self._safe_get_phase(tls) for tls in self.agent_tls.values()}
+        total_flow = self._compute_total_flow()
 
         for aid, a in action_dict.items():
             tls = self.agent_tls[aid]
@@ -278,6 +277,7 @@ class SumoEnvTwoAgents:
             self.traci.simulationStep()
             self.step_count += 1
 
+
         local = {"A": self._local_reward("A"), "B": self._local_reward("B")}
 
         for aid in ["A", "B"]:
@@ -286,14 +286,19 @@ class SumoEnvTwoAgents:
             if prev_phases.get(tls, None) is not None and cur_phase != prev_phases[tls]:
                 local[aid] -= self.switch_penalty
 
-        # total_flow = self._compute_total_detector_flow()
-        # peak_flag = 1.0 if total_flow >= self.peak_threshold else 0.0
-        peak_flag = 0.0
-        alpha = self.alpha[1] if peak_flag >= 1.0 else self.alpha[0]
-
         rewards = {}
-        rewards["A"] = local["A"] + alpha * local["B"]
-        rewards["B"] = local["B"] + alpha * local["A"]
+        if learned_alphas is not None:
+            rewards["A"] = local["A"] + learned_alphas["A"] * local["B"]
+            rewards["B"] = local["B"] + learned_alphas["B"] * local["A"]
+            # 记录使用的协同系数
+            alpha_A, alpha_B = learned_alphas["A"], learned_alphas["B"]
+        else:
+            # 回退到固定策略
+            detectors_total_flow = self._compute_total_detector_flow()
+            peak_flag = 1.0 if detectors_total_flow >= self.peak_threshold else 0.0
+            alpha = self.alpha[1] if peak_flag >= 1.0 else self.alpha[0]
+            rewards["A"] = local["A"] + alpha * local["B"]
+            rewards["B"] = local["B"] + alpha * local["A"]
 
         neighbor_entropy = {}
         if neighbor_policy_probs:
@@ -306,7 +311,23 @@ class SumoEnvTwoAgents:
 
         obs = self._get_all_obs(neighbor_entropy)
         done = False
-        info = {"alpha": alpha, "peak_flag": peak_flag}
+        if learned_alphas is not None:
+            info = {
+                "alpha_A": alpha_A,
+                "alpha_B": alpha_B,
+                "total_flow": total_flow
+            #     "local_A": local["A"],
+            #     "local_B": local["B"],
+            #     "reward_A": rewards["A"],
+            #     "reward_B": rewards["B"],
+            #     "cooperation_gain_A": rewards["A"] - local["A"],  # 协同带来的额外奖励
+            #     "cooperation_gain_B": rewards["B"] - local["B"]
+            }
+        else:
+            info = {
+                "alpha": alpha,
+                "total_flow": total_flow
+            }
 
         for tls in self.agent_tls.values():
             self.prev_phase[tls] = self._safe_get_phase(tls)
@@ -314,134 +335,6 @@ class SumoEnvTwoAgents:
         done = self.step_count * self.sim_step_length >= self.max_steps
 
         return obs, rewards, done, info
-    
-    # def get_phase_info(self, tls_id):
-    #     """
-    #     获取指定交通灯的当前相位信息
-        
-    #     Args:
-    #         tls_id: 交通灯ID，例如 "nt1" 或 "nt2"
-            
-    #     Returns:
-    #         dict: 包含相位详细信息的字典
-    #     """
-    #     try:
-    #         current_phase_index = self.traci.trafficlight.getPhase(tls_id)
-    #         phase_duration = self.traci.trafficlight.getPhaseDuration(tls_id)
-    #         phase_state = self.traci.trafficlight.getRedYellowGreenState(tls_id)
-    #         program = self.traci.trafficlight.getAllProgramLogics(tls_id)
-            
-    #         # 获取完整的相位定义
-    #         if program:
-    #             logic = program[0]  # 通常使用第一个程序
-    #             phases = logic.phases
-                
-    #             phase_info = {
-    #                 "tls_id": tls_id,
-    #                 "current_phase_index": current_phase_index,
-    #                 "current_phase_duration": phase_duration,
-    #                 "current_state": phase_state,
-    #                 "total_phases": len(phases),
-    #                 "all_phases": []
-    #             }
-                
-    #             for idx, phase in enumerate(phases):
-    #                 phase_detail = {
-    #                     "index": idx,
-    #                     "duration": phase.duration,
-    #                     "state": phase.state,
-    #                     "description": self._describe_phase(phase.state),
-    #                     "is_current": (idx == current_phase_index)
-    #                 }
-    #                 phase_info["all_phases"].append(phase_detail)
-                
-    #             return phase_info
-    #         else:
-    #             return {
-    #                 "tls_id": tls_id,
-    #                 "current_phase_index": current_phase_index,
-    #                 "current_state": phase_state,
-    #                 "error": "No program logic found"
-    #             }
-                
-    #     except Exception as e:
-    #         return {"error": str(e)}
-    
-    # def _describe_phase(self, state):
-    #     """
-    #     将相位状态字符串转换为人类可读的描述
-        
-    #     Args:
-    #         state: 相位状态字符串，例如 "rrrrGGGGrrrrrrrrgggggggg"
-    #     """
-    #     # 24个连接的索引含义
-    #     # 0-3: 南北直行, 4-7: 东西直行
-    #     # 8-11: 南北左转, 12-15: 东西左转
-    #     # 16-19: 南北右转, 20-23: 东西右转
-        
-    #     descriptions = []
-        
-    #     # 检查东西直行 (索引 4-7)
-    #     ew_straight = state[4:8]
-    #     if 'G' in ew_straight:
-    #         descriptions.append("东西直行(绿灯)")
-    #     elif 'y' in ew_straight or 'Y' in ew_straight:
-    #         descriptions.append("东西直行(黄灯)")
-        
-    #     # 检查南北直行 (索引 0-3)
-    #     ns_straight = state[0:4]
-    #     if 'G' in ns_straight:
-    #         descriptions.append("南北直行(绿灯)")
-    #     elif 'y' in ns_straight or 'Y' in ns_straight:
-    #         descriptions.append("南北直行(黄灯)")
-        
-    #     # 检查东西左转 (索引 12-15)
-    #     ew_left = state[12:16]
-    #     if 'G' in ew_left:
-    #         descriptions.append("东西左转(绿灯)")
-    #     elif 'y' in ew_left or 'Y' in ew_left:
-    #         descriptions.append("东西左转(黄灯)")
-        
-    #     # 检查南北左转 (索引 8-11)
-    #     ns_left = state[8:12]
-    #     if 'G' in ns_left:
-    #         descriptions.append("南北左转(绿灯)")
-    #     elif 'y' in ns_left or 'Y' in ns_left:
-    #         descriptions.append("南北左转(黄灯)")
-        
-    #     # 检查右转 (索引 16-23)
-    #     right_turn = state[16:24]
-    #     if 'g' in right_turn:
-    #         descriptions.append("右转(低优先级绿灯)")
-        
-    #     return " + ".join(descriptions) if descriptions else "全红"
-    
-    # def print_all_phases(self, tls_id="nt1"):
-    #     """
-    #     打印指定交通灯的所有相位信息
-        
-    #     Args:
-    #         tls_id: 交通灯ID，默认为 "nt1"
-    #     """
-    #     info = self.get_phase_info(tls_id)
-        
-    #     if "error" in info:
-    #         print(f"错误: {info['error']}")
-    #         return
-        
-    #     print(f"\n{'='*80}")
-    #     print(f"交通灯: {info['tls_id']}")
-    #     print(f"当前相位索引: {info['current_phase_index']}")
-    #     print(f"当前相位状态: {info['current_state']}")
-    #     print(f"总相位数: {info['total_phases']}")
-    #     print(f"{'='*80}\n")
-        
-    #     for phase in info["all_phases"]:
-    #         marker = ">>> " if phase["is_current"] else "    "
-    #         print(f"{marker}相位 {phase['index']}: (持续 {phase['duration']}秒)")
-    #         print(f"    状态字符串: {phase['state']}")
-    #         print(f"    描述: {phase['description']}")
-    #         print()
 
 class BatchSumoEnvManager:
     """
@@ -480,8 +373,6 @@ class BatchSumoEnvManager:
                 port=self.ports[i] if self.ports else None,
                 label=label
             )
-            env._start_sumo()
-            print(env._lane_cache)
             self.envs.append(env)
             # Initialize time-series buffer for each agent in each env
             self.time_series_buffers[i] = {
@@ -506,7 +397,7 @@ class BatchSumoEnvManager:
                 self.time_series_buffers[i][aid].append(obs[aid].copy())
         return obs_list
 
-    def step_all(self, actions_list, neighbor_probs_list=None):
+    def step_all(self, actions_list, neighbor_probs_list=None, learned_alphas_list=None):
         """
         Step all environments
         
@@ -525,13 +416,14 @@ class BatchSumoEnvManager:
         
         for i, env in enumerate(self.envs):
             neighbor_probs = neighbor_probs_list[i] if neighbor_probs_list else None
-            obs, rewards, done, info = env.step(actions_list[i], neighbor_policy_probs=neighbor_probs)
+            learned_alphas = learned_alphas_list[i] if learned_alphas_list else None
+            obs, rewards, done, info = env.step(actions_list[i], neighbor_policy_probs=neighbor_probs, learned_alphas=learned_alphas)
             
             obs_list.append(obs)
             rewards_list.append(rewards)
             done_list.append(done)
             info_list.append(info)
-            
+
             # Update time-series buffers
             for aid in ["A", "B"]:
                 self.time_series_buffers[i][aid].append(obs[aid].copy())
@@ -544,7 +436,6 @@ class BatchSumoEnvManager:
             time_series_list.append(ts_series)
         
         return obs_list, rewards_list, done_list, info_list, time_series_list
-
     def close_all(self):
         """Close all environments"""
         for env in self.envs:

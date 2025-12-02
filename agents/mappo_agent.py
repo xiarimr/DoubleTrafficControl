@@ -14,12 +14,14 @@ class Actor(tf.keras.Model):
             self.ts_lstm = tf.keras.layers.LSTM(lstm_size, return_sequences=False, return_state=True)
             # Flatten current obs and combine with LSTM output
             self.fc_combine = tf.keras.layers.Dense(128, activation="relu")
+            self.alpha_head = tf.keras.layers.Dense(1, activation="sigmoid")  # 输出 0~1 的协同系数
             # Policy head
             self.logits_layer = tf.keras.layers.Dense(act_dim)
         else:
             # Original architecture
             self.fc1 = tf.keras.layers.Dense(64, activation="relu")
             self.lstm = tf.keras.layers.LSTM(lstm_size, return_state=True, return_sequences=False)
+            self.alpha_head = tf.keras.layers.Dense(1, activation="sigmoid")
             self.logits_layer = tf.keras.layers.Dense(act_dim)
         
         self.lstm_size = lstm_size
@@ -44,7 +46,8 @@ class Actor(tf.keras.Model):
             x = self.fc_combine(combined)  # (batch, 128)
             logits = self.logits_layer(x)  # (batch, act_dim)
             probs = tf.nn.softmax(logits)
-            return logits, probs, (next_h, next_c)
+            alpha = self.alpha_head(x)  # (batch, 1)
+            return logits, probs, alpha, (next_h, next_c)
         else:
             # Original path (without time-series)
             x = self.fc1(obs)
@@ -52,7 +55,8 @@ class Actor(tf.keras.Model):
             output, h, c = self.lstm(x, initial_state=states)
             logits = self.logits_layer(output)
             probs = tf.nn.softmax(logits)
-            return logits, probs, (h, c)
+            alpha = self.alpha_head(output)
+            return logits, probs, alpha, (h, c)
 
 
 # Centralized Critic
@@ -110,25 +114,26 @@ class MAPPOAgent:
             time_series = np.expand_dims(time_series, axis=0)  # (1, time_series_len, obs_dim)
         
         if self.use_time_series and time_series is not None:
-            logits, probs, next_state = self.actor(obs, time_series=time_series)
+            logits, probs, alpha, next_state = self.actor(obs, time_series=time_series)
         else:
-            logits, probs, next_state = self.actor(obs, states=rnn_state)
+            logits, probs, alpha, next_state = self.actor(obs, states=rnn_state)
         
         probs = probs.numpy()[0]
+        alpha_value = float(alpha.numpy()[0, 0])
         action = np.random.choice(self.act_dim, p=probs)
         logp = np.log(probs[action] + 1e-8)
-        return action, logp, probs, next_state
+        return action, logp, probs, alpha_value, next_state
 
     @tf.function
     def train_actor_step(self, obs, act, adv, old_logp, time_series=None):
         with tf.GradientTape() as tape:
             if self.use_time_series and time_series is not None:
-                logits, probs, _ = self.actor(obs, time_series=time_series)
+                logits, probs, alpha, _ = self.actor(obs, time_series=time_series)
             else:
                 batch = tf.shape(obs)[0]
                 h0 = tf.zeros((batch, self.actor.lstm_size))
                 c0 = tf.zeros((batch, self.actor.lstm_size))
-                logits, probs, _ = self.actor(obs, (h0, c0))
+                logits, probs, alpha, _ = self.actor(obs, (h0, c0))
             
             logp_all = tf.nn.log_softmax(logits)
             act_onehot = tf.one_hot(act, depth=self.act_dim)

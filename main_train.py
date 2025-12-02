@@ -120,10 +120,6 @@ def train(
     os.makedirs(model_dir, exist_ok=True)
 
     total_rewards_list = []
-    corwork_list = []
-    ew_flow_list = []
-    ns_flow_list = []
-
     ports = find_free_port(base_port=base_port, num_ports=num_envs)
 
     # Create batch environment manager
@@ -177,6 +173,10 @@ def train(
         probs_buf = {aid: [] for aid in AGENTS}
         gobs_buf = []
         time_series_buf = {aid: [] for aid in AGENTS}  # Time-series buffers
+        if ep == total_epochs - 1:
+            last_epoch_alpha = []
+            total_flows = []
+
 
         # RNN states for each environment and agent
         rnn_states = {}
@@ -196,6 +196,7 @@ def train(
             # Prepare actions for all environments
             actions_list = []
             neighbor_probs_list = []
+            learned_alphas_list = []
             logp_dict_list = []
             
             for env_idx in range(num_envs):
@@ -207,10 +208,10 @@ def train(
                 ts_B = np.array(list(env_manager.time_series_buffers[env_idx]["B"]), dtype=np.float32)
                 
                 # Select actions with time-series input
-                a_A, logp_A, probs_A, next_state_A = agent_A.act(
+                a_A, logp_A, probs_A, alpha_A, next_state_A = agent_A.act(
                     obs["A"], rnn_states[env_idx]["A"], time_series=ts_A
                 )
-                a_B, logp_B, probs_B, next_state_B = agent_B.act(
+                a_B, logp_B, probs_B, alpha_B, next_state_B = agent_B.act(
                     obs["B"], rnn_states[env_idx]["B"], time_series=ts_B
                 )
                 
@@ -219,11 +220,14 @@ def train(
                 
                 actions_list.append({"A": a_A, "B": a_B})
                 neighbor_probs_list.append({"A": probs_A, "B": probs_B})
+                learned_alphas_list.append({"A": alpha_A, "B": alpha_B})
                 logp_dict_list.append({"A": logp_A, "B": logp_B})
-            
+                if ep == total_epochs - 1:
+                    last_epoch_alpha.append({"A": alpha_A, "B": alpha_B})
+
             # Step all environments
             obs_list, rewards_list, done_list, info_list, time_series_list = env_manager.step_all(
-                actions_list, neighbor_probs_list
+                actions_list, neighbor_probs_list, learned_alphas_list
             )
             
             # Store data from each environment
@@ -247,9 +251,11 @@ def train(
                     rew_buf[aid].append(rewards_dict[aid])
                     probs_buf[aid].append(probs_map[aid])
                     time_series_buf[aid].append(ts_dict[aid])  # Store time-series
+
+            if ep == total_epochs - 1:
+                total_flows.append(info_list[0]["total_flow"])
                 
             steps += 1
-                
 
         # Convert buffers to arrays
         for aid in AGENTS:
@@ -322,7 +328,7 @@ def train(
     print("Training finished, models saved.")
     
     env_manager.close_all()
-    return total_rewards_list, corwork_list, ew_flow_list, ns_flow_list
+    return total_rewards_list, last_epoch_alpha, total_flows
 
 def reward_plot(total_rewards_list, save_path="training_rewards.png"):
     plt.figure(figsize=(10, 6))
@@ -335,9 +341,37 @@ def reward_plot(total_rewards_list, save_path="training_rewards.png"):
     plt.close()
     print(f"Reward plot saved to {save_path}")
 
+def alpha_plot(last_epoch_alpha, total_flows, save_path="last_epoch_alphas.png"):
+    alphas_A = [entry["A"] for entry in last_epoch_alpha]
+    alphas_B = [entry["B"] for entry in last_epoch_alpha]
+    steps = list(range(len(alphas_A)))
+
+    plt.figure(figsize=(12, 6))
+
+    plt.subplot(2, 1, 1)
+    plt.plot(steps, alphas_A, label="Alpha A")
+    plt.plot(steps, alphas_B, label="Alpha B")
+    plt.xlabel("Step")
+    plt.ylabel("Learned Alpha")
+    plt.title("Learned Alphas Over Last Epoch")
+    plt.legend()
+    plt.grid()
+
+    plt.subplot(2, 1, 2)
+    plt.plot(steps, total_flows, label="Total Flow", color='orange')
+    plt.xlabel("Step")
+    plt.ylabel("Total Flow")
+    plt.title("Total Flow Over Last Epoch")
+    plt.legend()
+    plt.grid()
+
+    plt.tight_layout()
+    plt.savefig(save_path)
+    plt.close()
+    print(f"Alpha plot saved to {save_path}")
 
 if __name__ == "__main__":
-    total_rewards_list, corwork_list, ew_flow_list, ns_flow_list = train(
+    total_rewards_list, last_epoch_alpha, total_flows = train(
         SUMO_CFG="small_net/exp.sumocfg",
         SUMO_BIN="sumo",
         total_epochs=2000,
@@ -351,17 +385,13 @@ if __name__ == "__main__":
     with open("results_json/training_rewards.json", "w") as f:
         json.dump(total_rewards_list, f, indent=2)
     print("Rewards saved to training_rewards.json")
-    with open("results_json/corwork_list.json", "w") as f:
-        json.dump(corwork_list, f, indent=2)
-    print("Corwork list saved to corwork_list.json")
-    with open("results_json/ew_flow_list.json", "w") as f:
-        json.dump(ew_flow_list, f, indent=2)
-    print("EW flow list saved to ew_flow_list.json")
-    with open("results_json/ns_flow_list.json", "w") as f:
-        json.dump(ns_flow_list, f, indent=2)
-    print("NS flow list saved to ns_flow_list.json")
 
     reward_plot(
         total_rewards_list,
         save_path="training_rewards.png"
+    )
+    alpha_plot(
+        last_epoch_alpha,
+        total_flows,
+        save_path="last_epoch_alphas.png"
     )
