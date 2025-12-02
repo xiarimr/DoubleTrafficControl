@@ -1,8 +1,3 @@
-# TODO
-# 增加对是否采用协同控制的学习
-# 通过计算两种情况下的奖励差异，来衡量协同控制的效果
-
-
 import os
 import numpy as np
 import tensorflow as tf
@@ -374,15 +369,13 @@ if __name__ == "__main__":
     total_rewards_list, last_epoch_alpha, total_flows = train(
         SUMO_CFG="small_net/exp.sumocfg",
         SUMO_BIN="sumo",
-        total_epochs=2000,
+        total_epochs=200,
         env_steps=1024,
-        num_envs=1,  # Run 1 SUMO instance in parallel
+        num_envs=4,  # Run 4 SUMO instances in parallel
         time_series_len=16  # LSTM processes 16 time-steps
     )
-    
     # 保存为 JSON 文件
-    os.makedirs("results_json", exist_ok=True)
-    with open("results_json/training_rewards.json", "w") as f:
+    with open("training_rewards.json", "w") as f:
         json.dump(total_rewards_list, f, indent=2)
     print("Rewards saved to training_rewards.json")
 

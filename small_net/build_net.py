@@ -326,7 +326,8 @@ def output_ild(ild):
         node1 = 'nt' + str(i)
         node2 = 'np' + str(j)
         str_adds += get_ild_str(node2, node1, ild)
-        str_adds += get_ild_str(node2, node1, ild, lane_i=1)
+        if k < 2:
+            str_adds += get_ild_str(node2, node1, ild, lane_i=1)
     # streets
     str_adds += get_ild_str('nt1', 'nt2', ild)
     str_adds += get_ild_str('nt2', 'nt1', ild)
@@ -409,7 +410,7 @@ def main():
     write_file('./exp.rou.xml', output_flows(1000, 2000, 0.2))
 
     # add.xml file
-    ild = '  <laneAreaDetector file="ild.out" freq="1" id="%s_%d" lane="%s_%d" pos="10" endPos="-1"/>\n'
+    ild = '  <laneAreaDetector file="ild.out" freq="1" id="%s_%d" lane="%s_%d" pos="-50" endPos="-1"/>\n'
     # ild_in = '  <inductionLoop file="ild_out.out" freq="15" id="ild_in:%s" lane="%s_0" pos="10"/>\n'
     write_file('./exp.add.xml', output_ild(ild))
 

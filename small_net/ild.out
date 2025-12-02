@@ -1,7 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
+<<<<<<< HEAD
 <!-- generated on 2025-12-01T17:03:02.622631+08:00 by Eclipse SUMO libsumo 1.25.0
 <libsumoConfiguration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/libsumoConfiguration.xsd">
+=======
+<!-- generated on 2025-11-29T11:38:31.815756+08:00 by Eclipse SUMO sumo 1.25.0
+<sumoConfiguration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/sumoConfiguration.xsd">
+>>>>>>> parent of 084ba77 (实现协同控制的学习，修改一半)
 
     <input>
         <net-file value="small_net/exp.net.xml"/>
@@ -15,18 +20,16 @@
         <step-length value="1.0"/>
     </time>
 
-    <processing>
-        <time-to-teleport value="-1"/>
-    </processing>
-
-    <report>
-        <no-warnings value="true"/>
-        <duration-log.disable value="true"/>
-        <no-step-log value="true"/>
-    </report>
+    <traci_server>
+        <remote-port value="8814"/>
+    </traci_server>
 
     <gui_only>
         <start value="true"/>
     </gui_only>
 
+<<<<<<< HEAD
 </libsumoConfiguration>
+=======
+</sumoConfiguration>
+>>>>>>> parent of 084ba77 (实现协同控制的学习，修改一半)
