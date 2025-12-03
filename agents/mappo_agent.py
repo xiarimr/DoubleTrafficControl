@@ -44,9 +44,10 @@ class Actor(tf.keras.Model):
                 last_obs = time_series[:, -1, :]  # (batch, obs_dim)
                 combined = tf.concat([last_obs, ts_output], axis=1)
             x = self.fc_combine(combined)  # (batch, 128)
-            logits = self.logits_layer(x)  # (batch, act_dim)
+            alpha = self.alpha_head(x)  # (batch, 1), sigmoid → (0,1)
+            scale = 0.5 + alpha         # (0.5, 1.5)
+            logits = self.logits_layer(x) * scale   # alpha 控制策略强度
             probs = tf.nn.softmax(logits)
-            alpha = self.alpha_head(x)  # (batch, 1)
             return logits, probs, alpha, (next_h, next_c)
         else:
             # Original path (without time-series)
@@ -126,6 +127,13 @@ class MAPPOAgent:
 
     @tf.function
     def train_actor_step(self, obs, act, adv, old_logp, time_series=None):
+        obs = tf.convert_to_tensor(obs, dtype=tf.float32)
+        act = tf.convert_to_tensor(act, dtype=tf.int32)
+        adv = tf.convert_to_tensor(adv, dtype=tf.float32)
+        old_logp = tf.convert_to_tensor(old_logp, dtype=tf.float32)
+        if time_series is not None:
+            time_series = tf.convert_to_tensor(time_series, dtype=tf.float32)
+            
         with tf.GradientTape() as tape:
             if self.use_time_series and time_series is not None:
                 logits, probs, alpha, _ = self.actor(obs, time_series=time_series)

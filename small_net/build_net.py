@@ -407,7 +407,7 @@ def main():
     os.system('netconvert -c exp.netccfg')
 
     # raw.rou.xml file
-    write_file('./exp.rou.xml', output_flows(1000, 2000, 0.2))
+    write_file('./exp.rou.xml', output_flows(500, 1000, 0.2))
 
     # add.xml file
     ild = '  <laneAreaDetector file="ild.out" freq="1" id="%s_%d" lane="%s_%d" pos="-50" endPos="-1"/>\n'
