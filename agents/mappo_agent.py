@@ -44,9 +44,10 @@ class Actor(tf.keras.Model):
                 last_obs = time_series[:, -1, :]  # (batch, obs_dim)
                 combined = tf.concat([last_obs, ts_output], axis=1)
             x = self.fc_combine(combined)  # (batch, 128)
-            logits = self.logits_layer(x)  # (batch, act_dim)
+            alpha = self.alpha_head(x)  # (batch, 1), sigmoid → (0,1)
+            scale = 0.5 + alpha         # (0.5, 1.5)
+            logits = self.logits_layer(x) * scale   # alpha 控制策略强度
             probs = tf.nn.softmax(logits)
-            alpha = self.alpha_head(x)  # (batch, 1)
             return logits, probs, alpha, (next_h, next_c)
         else:
             # Original path (without time-series)
@@ -61,11 +62,12 @@ class Actor(tf.keras.Model):
 
 # Centralized Critic
 class Critic(tf.keras.Model):
-    def __init__(self, gobs_dim):
+    def __init__(self, gobs_dim, l2_reg=1e-4):
         super().__init__()
-        self.fc1 = tf.keras.layers.Dense(128, activation="relu")
-        self.fc2 = tf.keras.layers.Dense(64, activation="relu")
-        self.v_layer = tf.keras.layers.Dense(1)
+        self.l2_reg = l2_reg
+        self.fc1 = tf.keras.layers.Dense(128, activation="relu", kernel_regularizer=tf.keras.regularizers.l2(l2_reg))
+        self.fc2 = tf.keras.layers.Dense(64, activation="relu", kernel_regularizer=tf.keras.regularizers.l2(l2_reg))
+        self.v_layer = tf.keras.layers.Dense(1, kernel_regularizer=tf.keras.regularizers.l2(l2_reg))
 
 
     def call(self, gobs):
@@ -80,7 +82,8 @@ class MAPPOAgent:
     def __init__(self, obs_dim, act_dim, gobs_dim,
                  lstm_size=64, pi_lr=3e-4, v_lr=1e-3,
                  clip_ratio=0.2, ent_coef=0.01, 
-                 use_time_series=True, time_series_len=16):
+                 use_time_series=True, time_series_len=16,
+                 max_grad_norm=0.5, value_loss_coef=1.0):
 
         self.actor = Actor(obs_dim, act_dim, lstm_size, 
                           use_time_series=use_time_series, 
@@ -95,6 +98,8 @@ class MAPPOAgent:
         self.act_dim = act_dim
         self.use_time_series = use_time_series
         self.time_series_len = time_series_len
+        self.max_grad_norm = max_grad_norm
+        self.value_loss_coef = value_loss_coef
 
     def act(self, obs, rnn_state, time_series=None):
         """
@@ -126,6 +131,13 @@ class MAPPOAgent:
 
     @tf.function
     def train_actor_step(self, obs, act, adv, old_logp, time_series=None):
+        obs = tf.convert_to_tensor(obs, dtype=tf.float32)
+        act = tf.convert_to_tensor(act, dtype=tf.int32)
+        adv = tf.convert_to_tensor(adv, dtype=tf.float32)
+        old_logp = tf.convert_to_tensor(old_logp, dtype=tf.float32)
+        if time_series is not None:
+            time_series = tf.convert_to_tensor(time_series, dtype=tf.float32)
+            
         with tf.GradientTape() as tape:
             if self.use_time_series and time_series is not None:
                 logits, probs, alpha, _ = self.actor(obs, time_series=time_series)
@@ -150,6 +162,7 @@ class MAPPOAgent:
             loss = pi_loss - self.ent_coef * entropy
 
         grads = tape.gradient(loss, self.actor.trainable_variables)
+        grads, _ = tf.clip_by_global_norm(grads, self.max_grad_norm)
         self.pi_optimizer.apply_gradients(zip(grads, self.actor.trainable_variables))
         return pi_loss, entropy
 
@@ -158,9 +171,11 @@ class MAPPOAgent:
         with tf.GradientTape() as tape:
             v = self.critic(gobs)
             loss = tf.reduce_mean(tf.square(v - returns))
-        grads = tape.gradient(loss, self.critic.trainable_variables)
+            reg_loss = tf.reduce_sum(self.critic.losses)
+            total_loss = loss + self.value_loss_coef * reg_loss
+        grads = tape.gradient(total_loss, self.critic.trainable_variables)
         self.v_optimizer.apply_gradients(zip(grads, self.critic.trainable_variables))
-        return loss
+        return total_loss
 
     def update(self, obs, act, adv, old_logp, gobs, returns, 
                batch_size=64, epochs=4, update_critic=True, time_series=None):
