@@ -13,13 +13,13 @@ class Actor(tf.keras.Model):
             # Time-series LSTM branch
             self.ts_lstm = tf.keras.layers.LSTM(lstm_size, return_sequences=False, return_state=True)
             # Flatten current obs and combine with LSTM output
-            self.fc_combine = tf.keras.layers.Dense(128, activation="relu")
+            self.fc_combine = tf.keras.layers.Dense(128, activation="tanh")
             self.alpha_head = tf.keras.layers.Dense(1, activation="sigmoid")  # 输出 0~1 的协同系数
             # Policy head
             self.logits_layer = tf.keras.layers.Dense(act_dim)
         else:
             # Original architecture
-            self.fc1 = tf.keras.layers.Dense(64, activation="relu")
+            self.fc1 = tf.keras.layers.Dense(64, activation="tanh")
             self.lstm = tf.keras.layers.LSTM(lstm_size, return_state=True, return_sequences=False)
             self.alpha_head = tf.keras.layers.Dense(1, activation="sigmoid")
             self.logits_layer = tf.keras.layers.Dense(act_dim)
@@ -32,25 +32,25 @@ class Actor(tf.keras.Model):
         obs: (batch, obs_dim) - current observation
         states: tuple (h, c) - LSTM hidden states (for compatibility)
         time_series: (batch, time_series_len, obs_dim) - time-series data
+
+        returns:
+            logits: (batch, act_dim) - action logits
+            probs: (batch, act_dim) - action probabilities
+            alpha: (batch, 1) - cooperation coefficient
+            next_states: tuple (next_h, next_c) - next LSTM hidden states
         """
         if self.use_time_series and time_series is not None:
-            # Process time-series through LSTM
-            ts_output, next_h, next_c = self.ts_lstm(time_series)  # (batch, lstm_size)
-            # 如果提供了当前观测，则拼接
-            if obs is not None:
-                combined = tf.concat([obs, ts_output], axis=1)  # (batch, obs_dim + lstm_size)
+            if states is not None:
+                ts_output, next_h, next_c = self.ts_lstm(time_series, initial_state=states)
             else:
-                # 否则使用时间序列的最后一个时间步
-                last_obs = time_series[:, -1, :]  # (batch, obs_dim)
-                combined = tf.concat([last_obs, ts_output], axis=1)
-            x = self.fc_combine(combined)  # (batch, 128)
-            alpha = self.alpha_head(x)  # (batch, 1), sigmoid → (0,1)
-            scale = 0.5 + alpha         # (0.5, 1.5)
-            logits = self.logits_layer(x) * scale   # alpha 控制策略强度
+                ts_output, next_h, next_c = self.ts_lstm(time_series)
+            combined = tf.concat([obs if obs is not None else time_series[:, -1, :], ts_output], axis=1)
+            x = self.fc_combine(combined)
+            alpha = self.alpha_head(x)
+            logits = self.logits_layer(x) * (0.5 + alpha)
             probs = tf.nn.softmax(logits)
             return logits, probs, alpha, (next_h, next_c)
         else:
-            # Original path (without time-series)
             x = self.fc1(obs)
             x = tf.expand_dims(x, axis=1)
             output, h, c = self.lstm(x, initial_state=states)
@@ -65,8 +65,8 @@ class Critic(tf.keras.Model):
     def __init__(self, gobs_dim, l2_reg=1e-4):
         super().__init__()
         self.l2_reg = l2_reg
-        self.fc1 = tf.keras.layers.Dense(128, activation="relu", kernel_regularizer=tf.keras.regularizers.l2(l2_reg))
-        self.fc2 = tf.keras.layers.Dense(64, activation="relu", kernel_regularizer=tf.keras.regularizers.l2(l2_reg))
+        self.fc1 = tf.keras.layers.Dense(128, activation="tanh", kernel_regularizer=tf.keras.regularizers.l2(l2_reg))
+        self.fc2 = tf.keras.layers.Dense(64, activation="tanh", kernel_regularizer=tf.keras.regularizers.l2(l2_reg))
         self.v_layer = tf.keras.layers.Dense(1, kernel_regularizer=tf.keras.regularizers.l2(l2_reg))
 
 
@@ -119,7 +119,7 @@ class MAPPOAgent:
             time_series = np.expand_dims(time_series, axis=0)  # (1, time_series_len, obs_dim)
         
         if self.use_time_series and time_series is not None:
-            logits, probs, alpha, next_state = self.actor(obs, time_series=time_series)
+            logits, probs, alpha, next_state = self.actor(obs, states=rnn_state, time_series=time_series)
         else:
             logits, probs, alpha, next_state = self.actor(obs, states=rnn_state)
         

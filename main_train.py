@@ -5,9 +5,12 @@ import socket
 from contextlib import closing
 from matplotlib import pyplot as plt
 import json
+import datetime
 
 from agents.mappo_agent import MAPPOAgent
 from env.sumo_env import BatchSumoEnvManager
+# from utils.utils import RunningMeanStd
+
 
 # GAE computation
 def compute_gae(rewards, values, gamma=0.99, lam=0.95, num_envs=4):
@@ -65,40 +68,28 @@ def compute_gae(rewards, values, gamma=0.99, lam=0.95, num_envs=4):
     
     return advs, returns
 
-def find_free_port(base_port=8813, num_ports=4):
-    free_ports = []
-    current_port = base_port
-
-    while len(free_ports) < num_ports:
-        try:
-            with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as sock:
-                sock.bind(('127.0.0.1', current_port))
-                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                free_ports.append(current_port)
-        except OSError:
-            pass
-        current_port += 1
-    return free_ports
-    
 def train(
     SUMO_CFG="small_net/exp.sumocfg",
     SUMO_BIN="sumo",
-    base_port=8813,
     total_epochs=10000,
     env_steps=2048,
     num_envs=4,  # Number of parallel SUMO instances
-    gamma=0.99,
+    gamma=0.92,
     lam=0.95,
     ppo_epochs=6,
     mini_batch=64,
-    pi_lr=3e-4,
-    v_lr=1e-3,
+    pi_lr=1e-5,
+    v_lr=5e-5,
     lstm_size=64,
     ent_coef=0.01,
-    clip_ratio=0.2,
-    time_series_len=16,  # LSTM time-series length
+    clip_ratio=0.1,
+    time_series_len=18,  # LSTM time-series length
     model_dir="./models_tf2",
     save_every=20,
+    use_reward_norm=True,     # 新增：是否标准化奖励
+    reward_scale=1.0,         # 新增：奖励缩放系数
+    reward_clip=None,         # 新增：奖励裁剪阈值，如 5.0
+    max_grad_norm=0.5,        # 新增：梯度裁剪阈值
 ):
     # GPU configuration
     gpus = tf.config.list_physical_devices('GPU')
@@ -113,9 +104,10 @@ def train(
         print("No GPU found, using CPU.")
 
     os.makedirs(model_dir, exist_ok=True)
+    log_dir = os.path.join("/root/tf-logs", "fit", datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
+    summary_writer = tf.summary.create_file_writer(log_dir)
 
     total_rewards_list = []
-    ports = find_free_port(base_port=base_port, num_ports=num_envs)
 
     # Create batch environment manager
     env_manager = BatchSumoEnvManager(
@@ -123,11 +115,10 @@ def train(
         sumocfg_path=SUMO_CFG,
         sumo_bin=SUMO_BIN,
         time_series_len=time_series_len,
-        ports=ports
     )
 
     AGENTS = ["A", "B"]
-    obs_dim = 5
+    obs_dim = 4
     act_dim = 8
     gobs_dim = obs_dim * 2
 
@@ -136,19 +127,22 @@ def train(
         obs_dim, act_dim, gobs_dim,
         lstm_size=lstm_size, pi_lr=pi_lr, v_lr=v_lr,
         clip_ratio=clip_ratio, ent_coef=ent_coef,
-        use_time_series=True, time_series_len=time_series_len
+        use_time_series=True, time_series_len=time_series_len,
+        max_grad_norm=max_grad_norm
     )
     agent_A = MAPPOAgent(
         obs_dim, act_dim, gobs_dim,
         lstm_size=lstm_size, pi_lr=pi_lr, v_lr=v_lr,
         clip_ratio=clip_ratio, ent_coef=ent_coef,
-        use_time_series=True, time_series_len=time_series_len
+        use_time_series=True, time_series_len=time_series_len,
+        max_grad_norm=max_grad_norm
     )
     agent_B = MAPPOAgent(
         obs_dim, act_dim, gobs_dim,
         lstm_size=lstm_size, pi_lr=pi_lr, v_lr=v_lr,
         clip_ratio=clip_ratio, ent_coef=ent_coef,
-        use_time_series=True, time_series_len=time_series_len
+        use_time_series=True, time_series_len=time_series_len,
+        max_grad_norm=max_grad_norm
     )
 
     # Share critic
@@ -158,6 +152,7 @@ def train(
     agent_A.v_optimizer = central_agent.v_optimizer
     agent_B.v_optimizer = central_agent.v_optimizer
 
+    # reward_rms = RunningMeanStd()
     # Training loop
     for ep in range(total_epochs):
         # Initialize buffers for all data collected from all environments
@@ -167,10 +162,14 @@ def train(
         rew_buf = {aid: [] for aid in AGENTS}
         probs_buf = {aid: [] for aid in AGENTS}
         gobs_buf = []
-        time_series_buf = {aid: [] for aid in AGENTS}  # Time-series buffers
+        time_series_buf = {aid: [] for aid in AGENTS}
+        total_waiting_time = []
         if ep == total_epochs - 1:
-            last_epoch_alpha = []
+            last_epoch_alpha = {aid: [] for aid in AGENTS}
             total_flows = []
+            last_epoch_flag = True
+        else:
+            last_epoch_flag = False
 
 
         # RNN states for each environment and agent
@@ -190,13 +189,22 @@ def train(
         while steps < env_steps:
             # Prepare actions for all environments
             actions_list = []
-            neighbor_probs_list = []
+            neighbor_probs_list = [] # Probabilities of neighboring agents' actions
             learned_alphas_list = []
-            logp_dict_list = []
-            
+            logp_dict_list = [] # Log probabilities of selected actions
+            waiting_time_list = []
+            # for plotting
+            if last_epoch_flag:
+                tmp_alpha = {aid: [] for aid in AGENTS}
             for env_idx in range(num_envs):
                 
                 obs = obs_list[env_idx]
+
+                for aid in AGENTS:
+                    obs_buf[aid].append(obs[aid].astype(np.float32))
+                
+                gobs = np.concatenate([obs["A"], obs["B"]], axis=0).astype(np.float32)
+                gobs_buf.append(gobs)
                 
                 # Get time-series for current env
                 ts_A = np.array(list(env_manager.time_series_buffers[env_idx]["A"]), dtype=np.float32)
@@ -217,8 +225,12 @@ def train(
                 neighbor_probs_list.append({"A": probs_A, "B": probs_B})
                 learned_alphas_list.append({"A": alpha_A, "B": alpha_B})
                 logp_dict_list.append({"A": logp_A, "B": logp_B})
-                if ep == total_epochs - 1:
-                    last_epoch_alpha.append({"A": alpha_A, "B": alpha_B})
+                if last_epoch_flag:
+                    tmp_alpha["A"].append(alpha_A)
+                    tmp_alpha["B"].append(alpha_B)
+            if last_epoch_flag:
+                last_epoch_alpha["A"].append(np.mean(tmp_alpha["A"]))
+                last_epoch_alpha["B"].append(np.mean(tmp_alpha["B"]))
 
             # Step all environments
             obs_list, rewards_list, done_list, info_list, time_series_list = env_manager.step_all(
@@ -226,28 +238,28 @@ def train(
             )
             
             # Store data from each environment
-            for env_idx, (obs_dict, rewards_dict, ts_dict) in enumerate(
-                zip(obs_list, rewards_list, time_series_list)
+            for env_idx, (obs_dict, rewards_dict, ts_dict, info_dict) in enumerate(
+                zip(obs_list, rewards_list, time_series_list, info_list)
             ):
 
                 actions = actions_list[env_idx]
                 probs_map = neighbor_probs_list[env_idx]
                 logp_map = logp_dict_list[env_idx]
                 
-                # Store global observation
-                gobs = np.concatenate([obs_dict["A"], obs_dict["B"]], axis=0).astype(np.float32)
-                gobs_buf.append(gobs)
-                
                 # Store per-agent data
                 for aid in AGENTS:
-                    obs_buf[aid].append(obs_dict[aid].astype(np.float32))
                     act_buf[aid].append(actions[aid])
                     oldlogp_buf[aid].append(logp_map[aid])
                     rew_buf[aid].append(rewards_dict[aid])
                     probs_buf[aid].append(probs_map[aid])
-                    time_series_buf[aid].append(ts_dict[aid])  # Store time-series
+                    time_series_buf[aid].append(ts_dict[aid])
+                waiting_time_list.append((
+                    info_dict["reward_info_A"]["waiting_time"] + 
+                    info_dict["reward_info_B"]["waiting_time"]) / 2
+                )
+            total_waiting_time.extend(waiting_time_list)
 
-            if ep == total_epochs - 1:
+            if last_epoch_flag:
                 total_flows.append(info_list[0]["total_flow"])
                 
             steps += 1
@@ -260,10 +272,10 @@ def train(
             rew_buf[aid] = np.array(rew_buf[aid], dtype=np.float32)
             time_series_buf[aid] = np.array(time_series_buf[aid], dtype=np.float32)  # (steps, time_series_len, obs_dim)
 
-        gobs = np.vstack(gobs_buf).astype(np.float32)
+        # according to scores from critic, compute vals and advs
+        gobs = np.vstack(gobs_buf).astype(np.float32)  # 现在是 t=0…env_steps-1 的状态
+        vals = shared_critic(gobs).numpy()
 
-        vals = shared_critic(gobs).numpy()  # shape: (env_steps * num_envs,)
-        # Compute advantages and returns
         last_vals_list = []
         for env_idx in range(num_envs):
             obs = obs_list[env_idx]
@@ -276,7 +288,16 @@ def train(
 
 
         # Use summed rewards as global reward
-        rewards_sum = rew_buf["A"] + rew_buf["B"]
+        raw_rewards_sum = np.asarray(rew_buf["A"], np.float32) + np.asarray(rew_buf["B"], np.float32)  # 原始全局奖励
+        rewards_sum = raw_rewards_sum * float(reward_scale)  # 可选缩放
+        # if use_reward_norm:
+        #     # 用原始奖励更新统计，更稳
+        #     reward_rms.update(raw_rewards_sum)
+        #     rewards_sum = reward_rms.normalize(rewards_sum)
+
+        if reward_clip is not None:
+            rewards_sum = np.clip(rewards_sum, -float(reward_clip), float(reward_clip))
+
         advs, returns = compute_gae(rewards_sum, vals_full, gamma=gamma, lam=lam, num_envs=num_envs)
         advs = (advs - advs.mean()) / (advs.std() + 1e-8)
         returns = returns.astype(np.float32)
@@ -304,10 +325,29 @@ def train(
                 returns_b = returns[mb]
                 _ = central_agent.train_critic_step(gobs_b, returns_b)
 
-        # Logging
-        avg_rew = {aid: float(np.mean(rew_buf[aid])) for aid in AGENTS}
-        print(f"[EP {ep}] avg_rewards: {avg_rew}")
-        total_rewards_list.append(np.mean(list(avg_rew.values())))
+        # avg_rew = {aid: float(np.mean(rew_buf[aid])) for aid in AGENTS}
+        # avg_total_rew = rewards_sum.mean()
+        # print(f"[EP {ep}] avg_rewards: {avg_total_rew:.3f}")
+        # total_rewards_list.append(avg_total_rew)
+
+        # with summary_writer.as_default():
+        #     tf.summary.scalar('avg_total_reward', avg_total_rew, step=ep)
+        #     for aid, reward in avg_rew.items():
+        #         tf.summary.scalar(f'avg_reward_{aid}', reward, step=ep)
+
+        # logging
+        avg_rew = {aid: float(np.mean(rew_buf[aid])) for aid in AGENTS} # per-agent raw reward
+        # avg_total_rew_raw = float(raw_rewards_sum.mean()) # total raw reward
+        avg_total_rew = float(rewards_sum.mean()) # total processed reward
+        # print(f"[EP {ep}] avg_rewards(norm): {avg_total_rew:.3f} | raw: {avg_total_rew_raw:.3f}")
+        print(f"[EP {ep}] avg_rewards: {avg_total_rew:.3f}, waiting_time: {np.mean(total_waiting_time):.3f}")
+        total_rewards_list.append(avg_total_rew)
+
+        with summary_writer.as_default():
+            tf.summary.scalar('avg_total_reward_norm', avg_total_rew, step=ep)
+            # tf.summary.scalar('avg_total_reward_raw', avg_total_rew_raw, step=ep)
+            for aid, reward in avg_rew.items():
+                tf.summary.scalar(f'avg_reward_{aid}_raw', reward, step=ep)
 
         # Save checkpoints
         if ep % save_every == 0:
@@ -337,8 +377,8 @@ def reward_plot(total_rewards_list, save_path="training_rewards.png"):
     print(f"Reward plot saved to {save_path}")
 
 def alpha_plot(last_epoch_alpha, total_flows, save_path="last_epoch_alphas.png"):
-    alphas_A = [entry["A"] for entry in last_epoch_alpha]
-    alphas_B = [entry["B"] for entry in last_epoch_alpha]
+    alphas_A = last_epoch_alpha["A"]
+    alphas_B = last_epoch_alpha["B"]
     steps = list(range(len(alphas_A)))
 
     plt.figure(figsize=(12, 6))
@@ -366,13 +406,16 @@ def alpha_plot(last_epoch_alpha, total_flows, save_path="last_epoch_alphas.png")
     print(f"Alpha plot saved to {save_path}")
 
 if __name__ == "__main__":
+    import multiprocessing as mp
+    mp.set_start_method('spawn', force=True) # For multiprocessing compatibility on some platforms
     total_rewards_list, last_epoch_alpha, total_flows = train(
         SUMO_CFG="small_net/exp.sumocfg",
         SUMO_BIN="sumo",
-        total_epochs=2000,
+        total_epochs=1000,
         env_steps=1024,
-        num_envs=1,  # Run 1 SUMO instance in parallel
-        time_series_len=16  # LSTM processes 16 time-steps
+        num_envs=4,  # Run 4 SUMO instance in parallel
+        time_series_len=16,  # LSTM processes 16 time-steps
+        max_grad_norm=0.5,  # Gradient clipping threshold
     )
     
     # 保存为 JSON 文件

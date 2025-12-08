@@ -1,3 +1,8 @@
 models_tf2
 sumo_logs
 test_tll.py
+getmodel.py
+run_model.py
+*.ipynb*
+model1
+__pycache__/

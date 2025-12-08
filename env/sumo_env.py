@@ -1,8 +1,66 @@
+# 服务器无法display
+# 考虑删除w
 import numpy as np
 import time
 # import traci
 import libsumo as traci
 from collections import deque
+import multiprocessing as mp
+from multiprocessing import Process, Queue
+
+import sys
+sys.path.append("..")
+from utils.utils import Normalization #, RewardScaling
+
+class FeatureNormalizer:
+    """逐特征独立统计与归一化"""
+    def __init__(self, feat_dim=4, shape=(1,)):
+        self.feat_dim = feat_dim
+        self.norm_list = [Normalization(shape=shape) for _ in range(feat_dim)]
+
+    def update(self, x: np.ndarray):
+        for i in range(self.feat_dim):
+            _ = self.norm_list[i](np.asarray(x[i], dtype=np.float32), update=True)
+
+    def normalize(self, x: np.ndarray) -> np.ndarray:
+        out = np.empty_like(x, dtype=np.float32)
+        for i in range(self.feat_dim):
+            out[i] = self.norm_list[i](np.asarray(x[i], dtype=np.float32), update=False)
+        return out
+
+def env_worker(env_id, cmd_queue, result_queue, sumocfg_path, sumo_bin, time_series_len):
+    """
+    顶层函数：子进程环境循环，避免 pickle self
+    """
+    # 在子进程中导入/初始化 SUMO
+    # import libsumo as traci  # 如需
+    env = SumoEnvTwoAgents(
+        sumocfg_path=sumocfg_path,
+        sumo_bin=sumo_bin,
+        use_gui=False,
+        label=f"env_{env_id}"
+    )
+    try:
+        while True:
+            cmd, args = cmd_queue.get()
+            if cmd == "reset":
+                full_restart = args
+                obs = env.reset(full_restart=full_restart)
+                result_queue.put(("obs", obs))
+            elif cmd == "step":
+                action_dict, neighbor_probs, learned_alphas = args
+                obs, rewards, done, info = env.step(
+                    action_dict,
+                    neighbor_policy_probs=neighbor_probs,
+                    learned_alphas=learned_alphas
+                )
+                result_queue.put(("step", (obs, rewards, done, info)))
+            elif cmd == "close":
+                env.close()
+                result_queue.put(("closed", None))
+                break
+    except Exception as e:
+        result_queue.put(("error", str(e)))
 
 class SumoEnvTwoAgents:
     """Single SUMO environment instance"""
@@ -10,10 +68,10 @@ class SumoEnvTwoAgents:
     def __init__(self,
                 sumocfg_path="small_net/exp.sumocfg",
                 sumo_bin="sumo",
-                port = None,
-                label = None,
+                label=None,
                 delta_time=3.0,
                 sim_step_length=1.0,
+                obs_dim=4,
                 warmup_steps=120,
                 peak_threshold=None,
                 alpha_low=0.0,
@@ -23,8 +81,7 @@ class SumoEnvTwoAgents:
                 max_steps=10000):
         self.sumocfg = sumocfg_path
         self.sumo_bin = "sumo-gui" if use_gui else sumo_bin
-        self.port = port
-        self.label = label  # libsumo 不支持多实例的 label
+        self.label = label
         self.delta_time = delta_time
         self.sim_step_length = sim_step_length
         self.warmup_steps = warmup_steps
@@ -32,6 +89,7 @@ class SumoEnvTwoAgents:
         self.alpha = [alpha_low, alpha_high]
         self.switch_penalty = switch_penalty
         self.max_steps = max_steps
+        self.obs_dim = obs_dim
 
         # agent <-> tls mapping
         self.agent_tls = {"A": "nt1", "B": "nt2"}
@@ -45,6 +103,15 @@ class SumoEnvTwoAgents:
         
         # 缓存车道信息
         self._lane_cache = {}
+
+        # obs normalizers
+        self.normA = FeatureNormalizer(feat_dim=obs_dim, shape=(1,))
+        self.normB = FeatureNormalizer(feat_dim=obs_dim, shape=(1,))
+        # reward scaling
+        # self.q_scaler = RewardScaling(shape=1, gamma=0.99)
+        # self.w_scaler = RewardScaling(shape=1, gamma=0.99)
+        # self.q_scaler.reset()
+        # self.w_scaler.reset()
 
 
     def _start_sumo(self):
@@ -69,7 +136,7 @@ class SumoEnvTwoAgents:
                 # print(f"SUMO started with libsumo (faster!)")
                 
                 # 预缓存车道信息
-                self._cache_lane_info()
+                # self._cache_lane_info()
                 return
                 
             except Exception as e:
@@ -78,13 +145,13 @@ class SumoEnvTwoAgents:
                     raise
                 time.sleep(0.5)
 
-    def _cache_lane_info(self):
-        """预缓存所有交通灯的车道信息"""
-        try:
-            for tls in self.agent_tls.values():
-                self._lane_cache[tls] = list(self.traci.trafficlight.getControlledLanes(tls))
-        except Exception as e:
-            print(f"Warning: Failed to cache lane info: {e}")
+    # def _cache_lane_info(self):
+    #     """预缓存所有交通灯的车道信息"""
+    #     try:
+    #         for tls in self.agent_tls.values():
+    #             self._lane_cache[tls] = list(self.traci.trafficlight.getControlledLanes(tls))
+    #     except Exception as e:
+    #         print(f"Warning: Failed to cache lane info: {e}")
 
     def reset(self, full_restart=False):
         if full_restart or not hasattr(self, 'wave_scale'):
@@ -107,7 +174,7 @@ class SumoEnvTwoAgents:
                 self.detectors = []
             
             vals = []
-            print(f"Warming up {self.warmup_steps} steps...")
+            # print(f"Warming up {self.warmup_steps} steps...")
             
             for i in range(self.warmup_steps):
                 # print("warmup step:", i+1, "/", self.warmup_steps)
@@ -146,13 +213,19 @@ class SumoEnvTwoAgents:
                 self.traci.load([
                     '-c', self.sumocfg,
                     '--start',
-                    '--step-length', str(self.sim_step_length)
+                    '--step-length', str(self.sim_step_length),
+                    '--no-step-log', 'true',
+                    '--no-warnings', 'true',
+                    '--duration-log.disable', 'true',
+                    '--time-to-teleport', '-1',
                 ])
             except Exception as e:
                 print(f"Warning: load failed: {e}")
     
         self.step_count = 0
         self.prev_phase = {"nt1": self._safe_get_phase("nt1"), "nt2": self._safe_get_phase("nt2")}
+        # self.q_scaler.reset()
+        # self.w_scaler.reset()
         return self._get_all_obs()
 
     def _get_controlled_lanes(self, tls):
@@ -179,6 +252,7 @@ class SumoEnvTwoAgents:
             return 0
 
     def _compute_wave(self, tls):
+        # 获得一个交通灯控制的所有车道的排队车辆数之和
         lanes = self._get_controlled_lanes(tls)
         s = 0
         for l in lanes:
@@ -227,6 +301,7 @@ class SumoEnvTwoAgents:
         return float(s)
     
     def _compute_total_flow(self):
+        # 获得网络中所有车道的车辆数之和
         lanes = self.traci.lane.getIDList()
         s = 0
         for l in lanes:
@@ -239,23 +314,50 @@ class SumoEnvTwoAgents:
             neighbor_entropy = {"A": 0.0, "B": 0.0}
         obsA = self._obs_for_agent("A", neighbor_entropy.get("B", 0.0))
         obsB = self._obs_for_agent("B", neighbor_entropy.get("A", 0.0))
-        return {"A": obsA, "B": obsB}
+
+        # Update RunningMeanStd with the new observations
+        self.normA.update(obsA)
+        self.normB.update(obsB)
+
+        # Normalize observations
+        obsA_normalized = self.normA.normalize(obsA)
+        obsB_normalized = self.normB.normalize(obsB)
+        return {"A": obsA_normalized, "B": obsB_normalized}
 
     def _obs_for_agent(self, aid, neighbor_entropy=0.0):
         tls = self.agent_tls[aid]
         wave = self._compute_wave(tls)
         wait = self._compute_wait(tls)
         occ = self._compute_downstream_occ(tls)
-        peak_flag = 1.0 if self._compute_total_detector_flow() >= self.peak_threshold else 0.0
-        return np.array([wave/self.wave_scale, wait/self.wait_scale, occ, peak_flag, neighbor_entropy], dtype=np.float32)
+        return np.array([wave, wait, occ, neighbor_entropy], dtype=np.float32)
+        # peak_flag = 1.0 if self._compute_total_detector_flow() >= self.peak_threshold else 0.0
+        # return np.array([wave/self.wave_scale, wait/self.wait_scale, occ, peak_flag, neighbor_entropy], dtype=np.float32)
 
+    # 先用简单的负和作为 reward
+    # 之后使用压力作为reward
     def _local_reward(self, aid):
         tls = self.agent_tls[aid]
         q = self._compute_wave(tls)
         w = self._compute_wait(tls)
+        qs = q
+        ws = w
         occ = self._compute_downstream_occ(tls)
-        spill_pen = 10.0 if occ > 0.85 else 0.0
-        return -(q + 0.2*w + spill_pen)
+        spill_pen = 2 if occ > 0.85 else 0.0
+
+        # 分别进行 RewardScaling（标准化到 ~O(1)）
+        # q_s = float(self.q_scaler(np.asarray(qs, dtype=np.float32)))
+        # w_s = float(self.w_scaler(np.asarray(ws, dtype=np.float32)))
+
+        # base = -(q_s + w_s + spill_pen)
+        w_s = ws / 10000
+        q_s = qs / 100
+        base = -w_s - spill_pen - q_s
+        reward_info_dict = {
+            "queue": q,
+            "waiting_time": w,
+            "spill_penalty": spill_pen
+        }
+        return base, reward_info_dict
 
     def step(self, action_dict, neighbor_policy_probs=None, learned_alphas=None):
         prev_phases = {tls: self._safe_get_phase(tls) for tls in self.agent_tls.values()}
@@ -267,15 +369,16 @@ class SumoEnvTwoAgents:
             try:
                 self.traci.trafficlight.setPhase(tls, a_int)
             except:
-                pass
+                raise RuntimeError(f"Failed to set phase for TLS {tls} to {a_int}")
 
         steps = max(1, int(round(self.delta_time / self.sim_step_length)))
         for _ in range(steps):
             self.traci.simulationStep()
             self.step_count += 1
 
-
-        local = {"A": self._local_reward("A"), "B": self._local_reward("B")}
+        reward_A, reward_info_A = self._local_reward("A")
+        reward_B, reward_info_B = self._local_reward("B")
+        local = {"A": reward_A, "B": reward_B}
 
         for aid in ["A", "B"]:
             tls = self.agent_tls[aid]
@@ -312,7 +415,9 @@ class SumoEnvTwoAgents:
             info = {
                 "alpha_A": alpha_A,
                 "alpha_B": alpha_B,
-                "total_flow": total_flow
+                "total_flow": total_flow,
+                "reward_info_A": reward_info_A,
+                "reward_info_B": reward_info_B
             #     "local_A": local["A"],
             #     "local_B": local["B"],
             #     "reward_A": rewards["A"],
@@ -323,7 +428,9 @@ class SumoEnvTwoAgents:
         else:
             info = {
                 "alpha": alpha,
-                "total_flow": total_flow
+                "total_flow": total_flow,
+                "reward_info_A": reward_info_A,
+                "reward_info_B": reward_info_B
             }
 
         for tls in self.agent_tls.values():
@@ -340,58 +447,62 @@ class BatchSumoEnvManager:
     """
 
     def __init__(self, num_envs=4, sumocfg_path="small_net/exp.sumocfg", 
-                 sumo_bin="sumo", time_series_len=16, ports=None):
+                 sumo_bin="sumo", time_series_len=16):
         """
         Args:
             num_envs: Number of parallel SUMO instances
             sumocfg_path: Path to SUMO config
             sumo_bin: SUMO binary path
-            base_port: Starting port for SUMO instances
             time_series_len: Length of time-series sequence for LSTM
         """
         self.num_envs = num_envs
         self.time_series_len = time_series_len
         self.envs = []
         self.time_series_buffers = {}  # Per-env time-series buffers
-        self.ports = ports
-    
-        self.labels = [f"sumo_{i}" for i in range(num_envs)]
+        self.sumocfg_path = sumocfg_path
+        self.sumo_bin = sumo_bin
 
+        self.cmd_queues = [Queue() for _ in range(num_envs)]
+        self.result_queues = [Queue() for _ in range(num_envs)]
+        self.processes = []
         for i in range(num_envs):
-            label = self.labels[i]
-            env = SumoEnvTwoAgents(
-                sumocfg_path=sumocfg_path,
-                sumo_bin=sumo_bin,
-                delta_time=3.0,
-                sim_step_length=1.0,
-                warmup_steps=120,
-                switch_penalty=1.0,
-                use_gui=False,
-                port=self.ports[i] if self.ports else None,
-                label=label
+            p = Process(
+                target=env_worker,
+                args=(i, self.cmd_queues[i], self.result_queues[i],
+                      self.sumocfg_path, self.sumo_bin, self.time_series_len),
+                daemon=True
             )
-            self.envs.append(env)
-            # Initialize time-series buffer for each agent in each env
-            self.time_series_buffers[i] = {
-                "A": deque(maxlen=time_series_len),
-                "B": deque(maxlen=time_series_len)
-            }
+            p.start()
+            self.processes.append(p)
         
-        print(f"Initialized {num_envs} parallel SUMO environments")
+        # 时序缓冲区（主进程维护）
+        self.time_series_buffers = {
+            i: {"A": deque(maxlen=time_series_len), "B": deque(maxlen=time_series_len)}
+            for i in range(num_envs)
+        }
+        
+        print(f"✓ Initialized {num_envs} parallel SUMO environments (multiprocessing)")
 
     def reset_all(self, full_restart=False):
         """Reset all environments"""
+        for q in self.cmd_queues:
+            q.put(("reset", full_restart))
+        
+        # 收集结果
         obs_list = []
-        for i, env in enumerate(self.envs):
-            obs = env.reset(full_restart=full_restart or i == 0)
+        for i in range(self.num_envs):
+            msg_type, obs = self.result_queues[i].get()
+            if msg_type == "error":
+                raise RuntimeError(f"Env {i} error: {obs}")
             obs_list.append(obs)
-            # Clear time-series buffers
+            
+            # 初始化时序缓冲区
             for aid in ["A", "B"]:
                 self.time_series_buffers[i][aid].clear()
-                # Initialize buffer with current obs
-                for _ in range(self.time_series_len-1):
+                for _ in range(self.time_series_len - 1):
                     self.time_series_buffers[i][aid].append(np.zeros_like(obs[aid], dtype=np.float32))
                 self.time_series_buffers[i][aid].append(obs[aid].copy())
+        
         return obs_list
 
     def step_all(self, actions_list, neighbor_probs_list=None, learned_alphas_list=None):
@@ -405,36 +516,49 @@ class BatchSumoEnvManager:
         Returns:
             obs_list, rewards_list, done_list, info_list, time_series_list
         """
-        obs_list = []
-        rewards_list = []
-        done_list = []
-        info_list = []
-        time_series_list = []
-        
-        for i, env in enumerate(self.envs):
+        # 发送步进命令
+        for i in range(self.num_envs):
             neighbor_probs = neighbor_probs_list[i] if neighbor_probs_list else None
             learned_alphas = learned_alphas_list[i] if learned_alphas_list else None
-            obs, rewards, done, info = env.step(actions_list[i], neighbor_policy_probs=neighbor_probs, learned_alphas=learned_alphas)
+            self.cmd_queues[i].put(("step", (actions_list[i], neighbor_probs, learned_alphas)))
+        
+        # 收集结果
+        obs_list, rewards_list, done_list, info_list, time_series_list = [], [], [], [], []
+        
+        for i in range(self.num_envs):
+            msg_type, result = self.result_queues[i].get()
+            if msg_type == "error":
+                raise RuntimeError(f"Env {i} error: {result}")
             
+            obs, rewards, done, info = result
             obs_list.append(obs)
             rewards_list.append(rewards)
             done_list.append(done)
             info_list.append(info)
-
+            
             # Update time-series buffers
             for aid in ["A", "B"]:
                 self.time_series_buffers[i][aid].append(obs[aid].copy())
             
             # Extract current time-series as numpy array
             ts_series = {
-                "A": np.array(list(self.time_series_buffers[i]["A"]), dtype=np.float32),  # (time_series_len, obs_dim)
+                "A": np.array(list(self.time_series_buffers[i]["A"]), dtype=np.float32),
                 "B": np.array(list(self.time_series_buffers[i]["B"]), dtype=np.float32)
             }
             time_series_list.append(ts_series)
         
         return obs_list, rewards_list, done_list, info_list, time_series_list
+
     def close_all(self):
         """Close all environments"""
-        for env in self.envs:
-            env.close()
-        print("All SUMO environments closed")
+        for q in self.cmd_queues:
+            q.put(("close", None))
+        for i in range(self.num_envs):
+            _ = self.result_queues[i].get()
+        
+        for p in self.processes:
+            p.join(timeout=5)
+            if p.is_alive():
+                p.terminate()
+        
+        print("✓ All SUMO environments closed")

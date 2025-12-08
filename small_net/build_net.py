@@ -272,7 +272,7 @@ def output_flows(peak_flow1, peak_flow2, density, seed=None):
                     if src_idx in [1, 3]:  # 西->东 或 东->西
                         flow_val *= 1.3  # 东西直行增加30%
                     else:  # 南北直行
-                        flow_val *= 1  # 南北直行增加0%
+                        flow_val *= 0.7  # 南北直行减少30%
                 elif is_left:
                     flow_val *= 0.4  # 左转减少60%
                 elif is_right:
@@ -407,7 +407,8 @@ def main():
     os.system('netconvert -c exp.netccfg')
 
     # raw.rou.xml file
-    write_file('./exp.rou.xml', output_flows(1000, 2000, 0.2))
+    # 原peak_flow为(1000, 2000, 0.2)
+    write_file('./exp.rou.xml', output_flows(700, 700, 0.2))
 
     # add.xml file
     ild = '  <laneAreaDetector file="ild.out" freq="1" id="%s_%d" lane="%s_%d" pos="-50" endPos="-1"/>\n'
