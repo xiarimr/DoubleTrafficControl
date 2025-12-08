@@ -109,18 +109,22 @@ def train(
 
     total_rewards_list = []
 
+    AGENTS = ["A", "B"]
+    obs_dim = 4
+    act_dim = 2
+    gobs_dim = obs_dim * 2
+
     # Create batch environment manager
     env_manager = BatchSumoEnvManager(
         num_envs=num_envs,
         sumocfg_path=SUMO_CFG,
         sumo_bin=SUMO_BIN,
         time_series_len=time_series_len,
+        sim_step_length=1.0,
+        obs_dim=obs_dim,
+        act_dim=act_dim,
     )
 
-    AGENTS = ["A", "B"]
-    obs_dim = 4
-    act_dim = 8
-    gobs_dim = obs_dim * 2
 
     # Initialize shared agents
     central_agent = MAPPOAgent(

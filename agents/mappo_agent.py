@@ -47,7 +47,8 @@ class Actor(tf.keras.Model):
             combined = tf.concat([obs if obs is not None else time_series[:, -1, :], ts_output], axis=1)
             x = self.fc_combine(combined)
             alpha = self.alpha_head(x)
-            logits = self.logits_layer(x) * (0.5 + alpha)
+            # logits = self.logits_layer(x) * (0.5 + alpha)
+            logits = self.logits_layer(x)
             probs = tf.nn.softmax(logits)
             return logits, probs, alpha, (next_h, next_c)
         else:
@@ -111,7 +112,7 @@ class MAPPOAgent:
             time_series: (time_series_len, obs_dim) - time-series sequence
             
         Returns:
-            action, logp, probs, next_state
+            action, logp, probs, alpha_value, next_state
         """
         obs = obs.reshape(1, -1).astype(np.float32)
 

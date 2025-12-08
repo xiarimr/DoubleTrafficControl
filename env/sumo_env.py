@@ -69,41 +69,43 @@ class SumoEnvTwoAgents:
                 sumocfg_path="small_net/exp.sumocfg",
                 sumo_bin="sumo",
                 label=None,
-                delta_time=3.0,
                 sim_step_length=1.0,
                 obs_dim=4,
+                act_dim=2,
+                phase_num=8,
                 warmup_steps=120,
+                max_green=60,
+                min_green=10,
                 peak_threshold=None,
                 alpha_low=0.0,
                 alpha_high=0.85,
                 switch_penalty=1.0,
                 use_gui=False,
                 max_steps=10000):
+        # sumo config
         self.sumocfg = sumocfg_path
         self.sumo_bin = "sumo-gui" if use_gui else sumo_bin
         self.label = label
-        self.delta_time = delta_time
         self.sim_step_length = sim_step_length
-        self.warmup_steps = warmup_steps
-        self.peak_threshold = peak_threshold
-        self.alpha = [alpha_low, alpha_high]
-        self.switch_penalty = switch_penalty
         self.max_steps = max_steps
-        self.obs_dim = obs_dim
-
-        # agent <-> tls mapping
-        self.agent_tls = {"A": "nt1", "B": "nt2"}
-        self.n_actions = 8
-
-        # internal state
-        self.traci = None
-        self.step_count = 0
-        self.prev_phase = {"nt1": None, "nt2": None}
-        self.detectors = []
-        
-        # 缓存车道信息
         self._lane_cache = {}
 
+        # traffic light parameters and agent config
+        self.max_green = max_green
+        self.min_green = min_green
+        self.agent_tls = {"A": "nt1", "B": "nt2"}
+        self.phase_num = phase_num
+        self._phase_elapsed = {"nt1": 0.0, "nt2": 0.0}
+
+        # warmup config
+        self.warmup_steps = warmup_steps
+        self.peak_threshold = peak_threshold
+        
+        # obs, act, reward config
+        self.alpha = [alpha_low, alpha_high]
+        self.switch_penalty = switch_penalty
+        self.obs_dim = obs_dim
+        self.act_dim = act_dim
         # obs normalizers
         self.normA = FeatureNormalizer(feat_dim=obs_dim, shape=(1,))
         self.normB = FeatureNormalizer(feat_dim=obs_dim, shape=(1,))
@@ -113,6 +115,11 @@ class SumoEnvTwoAgents:
         # self.q_scaler.reset()
         # self.w_scaler.reset()
 
+        # internal state
+        self.traci = None
+        self.step_count = 0
+        self.prev_phase = {"nt1": None, "nt2": None}
+        self.detectors = []
 
     def _start_sumo(self):
         max_retries = 5
@@ -222,8 +229,12 @@ class SumoEnvTwoAgents:
             except Exception as e:
                 print(f"Warning: load failed: {e}")
     
+        for tls in self.agent_tls.values():
+            self.traci.trafficlight.setPhase(tls, 0)
         self.step_count = 0
         self.prev_phase = {"nt1": self._safe_get_phase("nt1"), "nt2": self._safe_get_phase("nt2")}
+        # print("initial phases:", self.prev_phase)
+        self._phase_elapsed = {"nt1": 0.0, "nt2": 0.0}
         # self.q_scaler.reset()
         # self.w_scaler.reset()
         return self._get_all_obs()
@@ -359,22 +370,38 @@ class SumoEnvTwoAgents:
         }
         return base, reward_info_dict
 
+    def _is_transition_phase(self, tls):
+        idx = self._safe_get_phase(tls)
+        return (idx % 2) == 1
+    
+    def _advance_phase(self, tls):
+        cur_idx = self._safe_get_phase(tls)
+        next_idx = (cur_idx + 1) % self.phase_num
+        self.traci.trafficlight.setPhase(tls, next_idx)
+        self._phase_elapsed[tls] = 0.0
+
     def step(self, action_dict, neighbor_policy_probs=None, learned_alphas=None):
         prev_phases = {tls: self._safe_get_phase(tls) for tls in self.agent_tls.values()}
         total_flow = self._compute_total_flow()
 
-        for aid, a in action_dict.items():
-            tls = self.agent_tls[aid]
-            a_int = int(a) % self.n_actions
-            try:
-                self.traci.trafficlight.setPhase(tls, a_int)
-            except:
-                raise RuntimeError(f"Failed to set phase for TLS {tls} to {a_int}")
+        # 仿真步进
+        self.traci.simulationStep()
+        self.step_count += 1
+        for tls in self.agent_tls.values():
+            self._phase_elapsed[tls] += self.sim_step_length
 
-        steps = max(1, int(round(self.delta_time / self.sim_step_length)))
-        for _ in range(steps):
-            self.traci.simulationStep()
-            self.step_count += 1
+        # 相位动作控制及转换
+        for aid, action in action_dict.items():
+            tls = self.agent_tls[aid]
+            a_int = int(action) % self.act_dim
+            is_trans = self._is_transition_phase(tls)
+            elapsed = self._phase_elapsed[tls]
+            if not is_trans:
+                if elapsed >= self.max_green or (elapsed >= self.min_green and a_int == 1):
+                    self._advance_phase(tls)
+            else:
+                if elapsed >= 3.0:
+                    self._advance_phase(tls)
 
         reward_A, reward_info_A = self._local_reward("A")
         reward_B, reward_info_B = self._local_reward("B")
@@ -418,12 +445,6 @@ class SumoEnvTwoAgents:
                 "total_flow": total_flow,
                 "reward_info_A": reward_info_A,
                 "reward_info_B": reward_info_B
-            #     "local_A": local["A"],
-            #     "local_B": local["B"],
-            #     "reward_A": rewards["A"],
-            #     "reward_B": rewards["B"],
-            #     "cooperation_gain_A": rewards["A"] - local["A"],  # 协同带来的额外奖励
-            #     "cooperation_gain_B": rewards["B"] - local["B"]
             }
         else:
             info = {
@@ -447,7 +468,8 @@ class BatchSumoEnvManager:
     """
 
     def __init__(self, num_envs=4, sumocfg_path="small_net/exp.sumocfg", 
-                 sumo_bin="sumo", time_series_len=16):
+                 sumo_bin="sumo", time_series_len=16,
+                 sim_step_length=1.0, obs_dim=4, act_dim=2):
         """
         Args:
             num_envs: Number of parallel SUMO instances
@@ -457,7 +479,9 @@ class BatchSumoEnvManager:
         """
         self.num_envs = num_envs
         self.time_series_len = time_series_len
-        self.envs = []
+        self.sim_step_length = sim_step_length
+        self.obs_dim = obs_dim
+        self.act_dim = act_dim
         self.time_series_buffers = {}  # Per-env time-series buffers
         self.sumocfg_path = sumocfg_path
         self.sumo_bin = sumo_bin
