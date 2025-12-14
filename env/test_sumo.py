@@ -49,10 +49,11 @@ def env_worker(env_id, cmd_queue, result_queue, sumocfg_path, sumo_bin, time_ser
                 obs = env.reset(full_restart=full_restart)
                 result_queue.put(("obs", obs))
             elif cmd == "step":
-                action_dict, neighbor_probs = args
+                action_dict, neighbor_probs, coop_params = args
                 obs, rewards, done, info = env.step(
                     action_dict,
                     neighbor_policy_probs=neighbor_probs,
+                    coop_params=coop_params
                 )
                 result_queue.put(("step", (obs, rewards, done, info)))
             elif cmd == "close":
@@ -99,7 +100,18 @@ class SumoEnvTwoAgents:
         self.act_dim = act_dim
 
         # coworking learning parameters
-
+        self.coop_offset_range = (0.0, 8.0)      # 上/下游绿灯错开的时间间隔(s)
+        self.coop_duration_range = (8.0, 40.0)    # 协同重叠时长(s)
+        self.coop_eval_window = 50                # 每个模式评估步数
+        self.coop_threshold = 0.0                 # 奖励提升阈值
+        self.coop_enabled = False                 # 当前是否启用协同
+        self._coop_lock_until = {"nt1": 0.0, "nt2": 0.0}
+        self._coop_overlap_end = {"nt1": 0.0, "nt2": 0.0}
+        self._coop_reward_buffer = []
+        self._coop_perf = {"on": None, "off": None}
+        self._coop_last_mode = "off"
+        self._current_coop_duration = None
+        self._current_coop_offset = None
 
         # obs normalizers
         self.normA = FeatureNormalizer(feat_dim=obs_dim, shape=(1,))
@@ -189,10 +201,20 @@ class SumoEnvTwoAgents:
         self._phase_elapsed = {"nt1": 0.0, "nt2": 0.0}
         # self.q_scaler.reset()
         # self.w_scaler.reset()
+
+        # 协同状态重置
+        self.coop_enabled = False
+        self._coop_lock_until = {"nt1": 0.0, "nt2": 0.0}
+        self._coop_overlap_end = {"nt1": 0.0, "nt2": 0.0}
+        self._coop_reward_buffer = []
+        self._coop_perf = {"on": None, "off": None}
+        self._coop_last_mode = "off"
+        self._current_coop_offset = None
+        self._current_coop_duration = None
         return self._get_all_obs()
 
     def _get_controlled_lanes(self, tls):
-        """从缓存获取车道"""
+        """get lanes controlled by a traffic light, with caching"""
         if tls not in self._lane_cache:
             try:
                 self._lane_cache[tls] = list(self.traci.trafficlight.getControlledLanes(tls))
@@ -263,6 +285,59 @@ class SumoEnvTwoAgents:
                 s += self.traci.lane.getLastStepVehicleNumber(l)
         return float(s)
 
+    def _apply_coop_gate(self, tls):
+        # 协同控制，锁定期保持，错过重叠期清理
+        if not self.coop_enabled:
+            return None
+        now = self.traci.simulation.getTime()
+        if now < self._coop_lock_until[tls]:
+            return "force_hold"
+        if now > self._coop_overlap_end[tls] > 0:
+            self._coop_lock_until[tls] = 0.0
+            self._coop_overlap_end[tls] = 0.0
+            return "clear_overlap"
+        return None
+
+    def _schedule_coop(self, pivot_tls, offset=None, duration=None):
+        # 为另一节点设定错开+重叠窗口，使用策略给出的 offset/duration；缺省回退随机
+        another_tls = "nt2" if pivot_tls == "nt1" else "nt1"
+        now = self.traci.simulation.getTime()
+        if offset is None:
+            offset = np.random.uniform(*self.coop_offset_range)
+        if duration is None:
+            duration = np.random.uniform(*self.coop_duration_range)
+        offset = float(np.clip(offset, *self.coop_offset_range))
+        duration = float(np.clip(duration, *self.coop_duration_range))
+        self._coop_lock_until[another_tls] = now + offset
+        self._coop_overlap_end[another_tls] = now + offset + duration
+        self._current_coop_offset = offset
+        self._current_coop_duration = duration
+
+    def _update_coop_learning(self, total_reward):
+        # 根据协同奖励表现决定是否启用协同控制
+        self._coop_reward_buffer.append(total_reward)
+        if len(self._coop_reward_buffer) < self.coop_eval_window:
+            return
+        avg_reward = np.mean(self._coop_reward_buffer[-self.coop_eval_window:])
+        mode = "on" if self.coop_enabled else "off"
+        self._coop_perf[mode] = avg_reward
+        self._coop_reward_buffer.clear()
+
+        if mode == "on":
+            self.coop_enabled = False
+            self._coop_last_mode = "on"
+        else:
+            self.coop_enabled = True
+            self._coop_last_mode = "off"
+            
+        if self._coop_perf["on"] is not None and self._coop_perf["off"] is not None:
+            if self._coop_perf["on"] >= self._coop_perf["off"] + self.coop_threshold:
+                self.coop_enabled = True
+            else:
+                self.coop_enabled = False
+            self._coop_perf = {"on": None, "off": None}
+
+
     def _get_all_obs(self, neighbor_entropy=None):
         if neighbor_entropy is None:
             neighbor_entropy = {"A": 0.0, "B": 0.0}
@@ -314,7 +389,7 @@ class SumoEnvTwoAgents:
     def _is_transition_phase(self, tls):
         idx = self._safe_get_phase(tls)
         return (idx % 2) == 1
-    
+
     def _advance_phase(self, tls):
         cur_idx = self._safe_get_phase(tls)
         next_idx = (cur_idx + 1) % self.phase_num
